@@ -25,7 +25,7 @@ class DesktopTests(unittest.TestCase):
 
     def test_native_window_requests_edge_webview2(self):
         fake = types.SimpleNamespace(create_window=MagicMock(),start=MagicMock())
-        with patch.dict(sys.modules, {'webview':fake}):
+        with patch.dict(sys.modules, {'webview':fake}), patch.object(app.sys, 'platform', 'win32'):
             app.run_desktop_window('http://127.0.0.1:33333/')
         self.assertIn('EvalúaFP', fake.create_window.call_args.args[0])
         self.assertEqual(fake.start.call_count,1)
@@ -33,7 +33,7 @@ class DesktopTests(unittest.TestCase):
 
     def test_native_failure_not_silently_redirected_to_browser(self):
         fake = types.SimpleNamespace(create_window=MagicMock(),start=MagicMock(side_effect=Exception('Runtime inexistente')))
-        with patch.dict(sys.modules, {'webview':fake}):
+        with patch.dict(sys.modules, {'webview':fake}), patch.object(app.sys, 'platform', 'win32'):
             with self.assertRaisesRegex(RuntimeError, 'WebView2 Runtime'):
                 app.run_desktop_window('http://127.0.0.1:33333/')
 
