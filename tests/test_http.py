@@ -97,6 +97,37 @@ class HttpTests(unittest.TestCase):
         self.assertIn(f'EFP{mid}_RA2',notes)
         self.assertNotIn('Instrumento',notes)
 
+    def test_manual_exam_ai_maps_two_criteria_with_teacher_approval(self):
+        m=self.req('api/modules',{'academic_year':'2026-2027','cycle':'CFGM',
+                    'name':'Contabilidad para asignación curricular','group_name':'1A'})
+        ra=self.req('api/outcomes',{'module_id':m['id'],'code':'RA2',
+                    'description':'Reconoce el método contable','weight':100})
+        c1=self.req('api/criteria',{'outcome_id':ra['id'],'code':'RA2.a',
+                     'description':'Reconoce la contabilidad por partida doble','weight':50})
+        c2=self.req('api/criteria',{'outcome_id':ra['id'],'code':'RA2.b',
+                     'description':'Identifica el ciclo contable','weight':50})
+        questions=[{'kind':'desarrollo',
+            'prompt':'Explique las fases del ciclo contable y represente un asiento mediante partida doble.',
+            'points':10,'ideal_answer':'Fases del ciclo y asiento.',
+            'rubric':[{'criterion':'Justificación','weight_pct':100}]}]
+        output={'assignments':[{'number':1,'status':'proposed','criteria':[
+                  {'criterion_id':c1['id'],'weight_pct':60,'confidence':.95,'rationale':'Requiere partida doble'},
+                  {'criterion_id':c2['id'],'weight_pct':40,'confidence':.92,'rationale':'Requiere ciclo contable'}]}]}
+        with patch.object(app.manual_alignment.ia,'chat',return_value=(output,'modelo-ia-simulado')):
+            found=self.req('api/exams/manual/classify',{'module_id':m['id'],'questions':questions})
+        self.assertEqual(found['needs_review'],0)
+        questions[0]['criteria_allocations']=found['assignments'][0]['criteria']
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            self.req('api/exams/manual',{'module_id':m['id'],'title':'Prueba sin confirmar',
+                  'questions':questions,'teacher_confirmed_curriculum':False})
+        self.assertEqual(ctx.exception.code,400)
+        created=self.req('api/exams/manual',{'module_id':m['id'],'title':'Prueba confirmada',
+                  'questions':questions,'teacher_confirmed_curriculum':True})
+        detail=self.req(f'api/exams/{created["id"]}')
+        allocations=detail['questions'][0]['criteria_allocations']
+        self.assertEqual([(x['criterion_id'],x['weight_pct']) for x in allocations],
+                         [(c1['id'],60),(c2['id'],40)])
+
     def test_full_flow_manual_exam_viewer_and_validation(self):
         m=self.req('api/modules',{'academic_year':'2026-2027','cycle':'CFGM','name':'Técnica Contable','group_name':'1A'})
         mid=m['id']

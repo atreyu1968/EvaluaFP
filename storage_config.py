@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 def _application_home():
-    """Sitúa datos externos junto al paquete, también en macOS .app."""
+    """Ubicación del dispositivo, estable aunque el ejecutable esté en un .app."""
     explicit = os.environ.get('EVALUAFP_PORTABLE_HOME')
     if explicit:
         return Path(explicit).expanduser().resolve()
@@ -22,6 +22,8 @@ def _application_home():
         return Path(__file__).resolve().parent
     exe = Path(sys.executable).resolve()
     if sys.platform == 'darwin':
+        # En un paquete .app, el ejecutable reside en Contents/MacOS.
+        # Los datos deben ir al lado del .app, NUNCA en su interior.
         for parent in exe.parents:
             if parent.suffix.lower() == '.app':
                 return parent.parent
@@ -39,6 +41,7 @@ INSTALLED_FILE = LOCAL_HOME / 'ubicaciones.json'
 PORTABLE = (PORTABLE_FILE.is_file() or '--portable' in sys.argv or
             os.environ.get('EVALUAFP_PORTABLE') == '1' or
             (getattr(sys,'frozen',False) and 'portatil' in Path(sys.executable).stem.casefold()))
+
 
 def _read_json(path):
     if not path.exists():

@@ -28,9 +28,12 @@ import logic
 import materiales
 import storage_config
 import evaluacion
+import weight_defaults
 import exportaciones
+import manual_alignment
+import curriculum_official
 
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.6"
 TOKEN = secrets.token_urlsafe(32)
 WEB = (Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'web')
 
@@ -86,9 +89,15 @@ def parse_weight(raw):
 
 def fields_safe(d, module_id):
     module=must_row(d,'SELECT * FROM modules WHERE id=?',(module_id,))
-    outcome_rows=data.dicts(d.execute('SELECT * FROM outcomes WHERE module_id=? ORDER BY id',(module_id,)))
+    outcome_rows=data.dicts(d.execute('''SELECT o.*,
+       COALESCE((SELECT origin FROM weight_origins WHERE kind='ra' AND record_id=o.id),
+       CASE WHEN o.weight IS NULL THEN 'pending' ELSE 'existing' END) AS weight_origin
+       FROM outcomes o WHERE o.module_id=? ORDER BY o.id''',(module_id,)))
     criteria=data.dicts(d.execute('''SELECT c.*,o.code AS outcome_code,o.description AS outcome_description,
-           o.weight AS outcome_weight FROM criteria c JOIN outcomes o ON o.id=c.outcome_id
+           o.weight AS outcome_weight,
+           COALESCE((SELECT origin FROM weight_origins WHERE kind='ce' AND record_id=c.id),
+             CASE WHEN c.weight IS NULL THEN 'pending' ELSE 'existing' END) AS weight_origin
+           FROM criteria c JOIN outcomes o ON o.id=c.outcome_id
            WHERE o.module_id=? ORDER BY o.id,c.id''',(module_id,)))
     students=data.dicts(d.execute('SELECT * FROM students WHERE module_id=? ORDER BY name',(module_id,)))
     programs=data.dicts(d.execute('SELECT id,filename,uploaded_at,LENGTH(extracted_text) AS text_length FROM programmings WHERE module_id=? ORDER BY id DESC',(module_id,)))
@@ -110,6 +119,11 @@ def exam_detail(d,exam_id):
       JOIN criteria c ON c.id=q.criterion_id JOIN outcomes o ON o.id=c.outcome_id
       WHERE q.exam_id=? ORDER BY q.number''',(exam_id,)))
     for q in qs:
+        q['criteria_allocations']=data.dicts(d.execute("""SELECT qc.criterion_id,qc.weight_pct,
+                qc.confidence,qc.rationale,c.code AS criterion_code,o.code AS ra_code
+                FROM exam_question_criteria qc JOIN criteria c ON c.id=qc.criterion_id
+                JOIN outcomes o ON o.id=c.outcome_id WHERE qc.question_id=?
+                ORDER BY qc.weight_pct DESC""",(q['id'],)))
         q['options']=json.loads(q.pop('options_json'))
         q['rubric']=json.loads(q.pop('rubric_json'))
         q['source_refs']=json.loads(q.pop('source_refs_json'))
@@ -150,19 +164,32 @@ def apply_extraction(d,module_id,outcomes):
         desc=str(item.get('description','')).strip()
         if not code or not desc or len(code)>50 or len(desc)>12000:raise ValueError('RA incompleto.')
         w=parse_weight(item.get('weight'))
+        prior=d.execute('SELECT id,weight FROM outcomes WHERE module_id=? AND code=?',(module_id,code)).fetchone()
+        previous_origin=weight_defaults.origin(d,'ra',prior['id']) if prior else None
+        # Un ajuste manual ya realizado no se pisa al reimportar la programación.
+        if previous_origin=='manual':w=prior['weight']
         d.execute('''INSERT INTO outcomes(module_id,code,description,weight) VALUES(?,?,?,?)
-                     ON CONFLICT(module_id,code) DO UPDATE SET description=excluded.description,weight=excluded.weight''',
+                     ON CONFLICT(module_id,code) DO UPDATE SET description=excluded.description,weight=COALESCE(excluded.weight,outcomes.weight)''',
                   (module_id,code,desc,w))
         oid=must_row(d,'SELECT id FROM outcomes WHERE module_id=? AND code=?',(module_id,code))['id']
+        if previous_origin!='manual' and (w is not None or not prior):
+            weight_defaults.mark(d,'ra',oid,'programming' if w is not None else 'default')
         for c in item.get('criteria',[]):
             cc=str(c.get('code','')).strip()
             cd=str(c.get('description','')).strip()
             if not cc or not cd or len(cc)>50 or len(cd)>12000:raise ValueError('CE incompleto.')
             cw=parse_weight(c.get('weight'))
+            prior_ce=d.execute('SELECT id,weight FROM criteria WHERE outcome_id=? AND code=?',(oid,cc)).fetchone()
+            previous_ce_origin=weight_defaults.origin(d,'ce',prior_ce['id']) if prior_ce else None
+            if previous_ce_origin=='manual':cw=prior_ce['weight']
             d.execute('''INSERT INTO criteria(outcome_id,code,description,weight) VALUES(?,?,?,?)
-                         ON CONFLICT(outcome_id,code) DO UPDATE SET description=excluded.description,weight=excluded.weight''',
+                         ON CONFLICT(outcome_id,code) DO UPDATE SET description=excluded.description,weight=COALESCE(excluded.weight,criteria.weight)''',
                       (oid,cc,cd,cw))
+            cid=must_row(d,'SELECT id FROM criteria WHERE outcome_id=? AND code=?',(oid,cc))['id']
+            if previous_ce_origin!='manual' and (cw is not None or not prior_ce):
+                weight_defaults.mark(d,'ce',cid,'programming' if cw is not None else 'default')
             count+=1
+    weight_defaults.recalculate(d,module_id)
     data.log(d,'programming_criteria_confirmed','module',module_id,{'outcomes':len(outcomes),'criteria':count})
     return count
 
@@ -230,11 +257,13 @@ def gradebook(d):
         r.pop('score',None)
     by_criterion=data.dicts(d.execute('''SELECT st.code AS student_code,st.name AS student_name,
          m.name AS module_name,o.code AS outcome_code,cr.code AS criterion_code,
-         ROUND(SUM(c.teacher_score),2) AS scored,ROUND(SUM(q.points),2) AS maximum,
+         ROUND(SUM(c.teacher_score*qc.weight_pct/100.0),2) AS scored,
+         ROUND(SUM(q.points*qc.weight_pct/100.0),2) AS maximum,
          COUNT(*) AS evaluated_questions
          FROM corrections c JOIN submissions s ON s.id=c.submission_id AND c.run_id=s.current_run_id
          JOIN exam_questions q ON q.id=c.question_id
-         JOIN criteria cr ON cr.id=q.criterion_id
+         JOIN exam_question_criteria qc ON qc.question_id=q.id
+         JOIN criteria cr ON cr.id=qc.criterion_id
          JOIN outcomes o ON o.id=cr.outcome_id
          JOIN students st ON st.id=s.student_id JOIN modules m ON m.id=st.module_id
          WHERE s.status='validated' AND c.status='validated'
@@ -363,7 +392,7 @@ def register_students(db, module_id, incoming):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='EvaluaFP/1.0.4'
+    server_version='EvaluaFP/1.0.6'
     def log_message(self,format,*args):
         # No vuelca tokens, claves ni datos de alumnado en stdout.
         return
@@ -618,7 +647,9 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     d.execute('INSERT INTO outcomes(module_id,code,description,weight) VALUES(?,?,?,?)',(mid,code,desc,weight))
                     rid=d.execute('SELECT last_insert_rowid()').fetchone()[0]
-                data.log(d,'outcome_saved','outcome',rid,{'weight':weight})
+                weight_defaults.mark(d,'ra',rid,'manual' if weight is not None else 'default')
+                weight_defaults.recalculate(d,mid)
+                data.log(d,'outcome_saved','outcome',rid,{'weight':weight,'origin':'manual' if weight is not None else 'default'})
             return self.send({'id':rid})
         if path=='/api/criteria':
             oid=int(body['outcome_id']); code=str(body.get('code','')).strip();desc=str(body.get('description','')).strip()
@@ -632,7 +663,10 @@ class Handler(BaseHTTPRequestHandler):
                 else:
                     d.execute('INSERT INTO criteria(outcome_id,code,description,weight) VALUES(?,?,?,?)',(oid,code,desc,weight))
                     cid=d.execute('SELECT last_insert_rowid()').fetchone()[0]
-                data.log(d,'criterion_saved','criterion',cid,{'weight':weight})
+                weight_defaults.mark(d,'ce',cid,'manual' if weight is not None else 'default')
+                mid=d.execute('SELECT module_id FROM outcomes WHERE id=?',(oid,)).fetchone()['module_id']
+                weight_defaults.recalculate(d,mid)
+                data.log(d,'criterion_saved','criterion',cid,{'weight':weight,'origin':'manual' if weight is not None else 'default'})
             return self.send({'id':cid})
         if path=='/api/programmings/upload':
             mid=int(fields['module_id']); docfiles=[x for x in files if x[0]=='document']
@@ -683,6 +717,17 @@ class Handler(BaseHTTPRequestHandler):
                 d.execute('UPDATE materials SET active=? WHERE id=?',(int(active),pid))
                 data.log(d,'material_status_changed','material',pid,{'active':active})
             return self.send({'ok':True,'active':active})
+        if path=='/api/curriculum/official':
+            mid=int(body['module_id'])
+            with data.connect() as d:
+                module=must_row(d,'SELECT name FROM modules WHERE id=?',(mid,))
+                proposal=curriculum_official.fetch_official(module['name'],body.get('boe_id'),
+                      consent=body.get('authorize_official_query') is True)
+                data.log(d,'official_curriculum_consulted','module',mid,
+                         {'source_url':proposal['source_url'],'source_id':proposal['source_id'],
+                          'consulted_at':proposal['consulted_at'],
+                          'outcomes':len(proposal['outcomes'])})
+            return self.send(proposal)
         if path=='/api/programmings/analyze':
             with data.connect() as d:
                 program=must_row(d,'SELECT * FROM programmings WHERE id=?',(int(body['programming_id']),))
@@ -694,6 +739,13 @@ class Handler(BaseHTTPRequestHandler):
             with data.connect() as d:
                 must_row(d,'SELECT id FROM modules WHERE id=?',(mid,))
                 count=apply_extraction(d,mid,out)
+                if body.get('source_url'):
+                    source=str(body['source_url'])
+                    if not source.startswith(('https://www.boe.es/diario_boe/txt.php?id=BOE-A-',)):
+                        raise ValueError('La referencia de la fuente debe pertenecer al BOE.')
+                    data.log(d,'official_curriculum_approved_by_teacher','module',mid,
+                        {'source_url':source,'consulted_at':body.get('consulted_at'),
+                         'teacher_approved':True,'criteria_saved':count})
             return self.send({'ok':True,'criteria_saved':count})
         if path=='/api/exams/generate':
             with data.connect() as d:
@@ -763,6 +815,15 @@ class Handler(BaseHTTPRequestHandler):
                      'materials':[m['id'] for m in materials_used]})
             return self.send({'id':ids[0],'exam_ids':ids,'batch_id':batch_id,
                               'model_count':model_count,'bank_size':len(bank)})
+        if path=='/api/exams/manual/classify':
+            mid=int(body['module_id'])
+            with data.connect() as d:
+                must_row(d,'SELECT id FROM modules WHERE id=?',(mid,))
+                proposal=manual_alignment.suggest(d,mid,body.get('questions',[]))
+                data.log(d,'manual_exam_curricular_proposal','module',mid,
+                         {'questions':len(proposal['assignments']),'needs_review':proposal['needs_review'],
+                          'model':proposal['model']})
+            return self.send(proposal)
         if path=='/api/exams/manual':
             # Permite pruebas y creación de exámenes manuales cuando no exista API.
             with data.connect() as d:
@@ -773,15 +834,19 @@ class Handler(BaseHTTPRequestHandler):
                 if not title:raise ValueError('Indique título de examen.')
                 total=round(sum(float(x['points']) for x in qs),2)
                 if total<=0 or total>100:raise ValueError('Puntos totales no válidos.')
-                for q in qs:
-                    must_row(d,'''SELECT c.id FROM criteria c JOIN outcomes o ON o.id=c.outcome_id
-                      WHERE c.id=? AND o.module_id=?''',(int(q['criterion_id']),mid))
+                valid_catalogue={c['criterion_id']:c for c in manual_alignment.catalogue(d,mid)}
+                if not valid_catalogue:raise ValueError('El módulo no tiene CE confirmados.')
+                allocations=[manual_alignment.validate_allocations(q,valid_catalogue) for q in qs]
+                if any('criteria_allocations' in q for q in qs) and not body.get('teacher_confirmed_curriculum'):
+                    raise ValueError('Confirme como docente la correspondencia entre preguntas y RA/CE.')
                 header=validate_header(body)
                 d.execute('''INSERT INTO exams(module_id,title,kind,total_points,instructions,created_at,status,ai_model,center_name,exam_date,duration_minutes)
                      VALUES(?,?,?,?,?,?,?,?,?,?,?)''',(mid,title,'manual',total,str(body.get('instructions','')),data.now(),'ready','',
                      header['center_name'],header['exam_date'],header['duration_minutes']))
                 eid=d.execute('SELECT last_insert_rowid()').fetchone()[0]
                 for i,q in enumerate(qs,1):
+                    links=allocations[i-1]
+                    primary=max(links,key=lambda x:x['weight_pct'])['criterion_id']
                     points=float(q['points'])
                     if points<=0:raise ValueError('Puntuaciones deben ser positivas')
                     kind=q.get('kind','desarrollo')
@@ -792,10 +857,20 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError('La rúbrica del problema debe sumar el 100 %.')
                     d.execute('''INSERT INTO exam_questions(exam_id,criterion_id,number,kind,prompt,points,
                             options_json,correct_option,ideal_answer,rubric_json) VALUES(?,?,?,?,?,?,?,?,?,?)''',
-                        (eid,int(q['criterion_id']),i,kind,str(q['prompt']),points,
+                        (eid,primary,i,kind,str(q['prompt']),points,
                          json.dumps(q.get('options',[]),ensure_ascii=False),str(q.get('correct_option','')),
                          str(q.get('ideal_answer','')),json.dumps(q.get('rubric',[]),ensure_ascii=False)))
-                data.log(d,'exam_manually_created','exam',eid,{'questions':len(qs)})
+                    qid=d.execute('SELECT last_insert_rowid()').fetchone()[0]
+                    # El disparador creó una asignación por defecto; reemplazarla por la revisión docente.
+                    d.execute('DELETE FROM exam_question_criteria WHERE question_id=?',(qid,))
+                    d.executemany('''INSERT INTO exam_question_criteria
+                        (question_id,criterion_id,weight_pct,confidence,rationale)
+                        VALUES(?,?,?,?,?)''',[(qid,x['criterion_id'],x['weight_pct'],x['confidence'],x['rationale']) for x in links])
+                data.log(d,'exam_manually_created','exam',eid,{'questions':len(qs),
+                    'curricular_allocation_confirmed':True,
+                    'criteria_by_question':[[{'criterion_id':x['criterion_id'],
+                        'weight_pct':x['weight_pct'],'rationale':x['rationale']} for x in links]
+                        for links in allocations]})
             return self.send({'id':eid})
         if path=='/api/submissions/upload':
             eid=int(fields['exam_id']);student_id=int(fields['student_id'])
@@ -957,28 +1032,45 @@ def open_interface(url):
 
 
 def run_desktop_window(url):
-    """Ventana del sistema: WebView2 (Windows), Cocoa (macOS) o Qt (Linux)."""
+    """Abrir la ventana nativa del sistema (WebView2, WebKit o Qt).
+
+    La importación deliberadamente ocurre en tiempo de ejecución para que
+    --selftest no necesite una sesión gráfica y para conservar los modos alternativos.
+    """
     try:
         import webview
     except ImportError as exc:
-        raise RuntimeError('Falta pywebview. Compruebe las dependencias de su sistema operativo.') from exc
+        raise RuntimeError(
+            'Falta el componente pywebview. Recompile con las dependencias del sistema operativo correspondiente.'
+        ) from exc
 
     window_title = 'EvalúaFP · Evaluación inteligente'
-    webview.create_window(window_title, url+'?launch='+TOKEN,
-                          width=1390, height=900, min_size=(900,650),
-                          resizable=True, confirm_close=False)
+    webview.create_window(
+        window_title, url+'?launch='+TOKEN,
+        width=1390, height=900, min_size=(900, 650),
+        resizable=True, confirm_close=False,
+    )
     try:
         if sys.platform == 'win32':
+            # Windows: conservar WebView2 y la barra de título azul marino.
             from desktop_caption import colorize_caption
             webview.start(func=lambda: colorize_caption(window_title), gui='edgechromium')
         elif sys.platform == 'darwin':
+            # macOS: el motor Cocoa / WKWebView usa el WebKit del sistema.
             webview.start()
         elif sys.platform.startswith('linux'):
+            # Linux: QtWebEngine, incluido en la distribución generada.
             webview.start(gui='qt')
         else:
-            raise RuntimeError('Sistema operativo de escritorio no soportado.')
+            raise RuntimeError('Sistema operativo no admitido para la ventana nativa.')
     except Exception as exc:
-        raise RuntimeError(f'No se ha podido abrir la ventana de EvalúaFP. {"Microsoft Edge WebView2 Runtime" if sys.platform == "win32" else "Motor gráfico " + sys.platform}: {exc}') from exc
+        hints = {
+            'win32': 'Compruebe Microsoft Edge WebView2 Runtime.',
+            'darwin': 'Compruebe que la aplicación macOS está completa y dispone de permisos.',
+        }
+        hint = hints.get(sys.platform, 'Compruebe las bibliotecas gráficas Qt y el entorno de escritorio Linux.')
+        raise RuntimeError(f'No se ha podido abrir EvalúaFP. {hint} Detalle técnico: {exc}') from exc
+
 
 def main():
     server, url = start()
@@ -1028,7 +1120,7 @@ def selftest():
             if not callable(getattr(webview, 'create_window', None)):
                 raise RuntimeError('pywebview no proporciona create_window.')
         except Exception as exc:
-            raise RuntimeError('Falta el componente de escritorio pywebview en el EXE.') from exc
+            raise RuntimeError('Falta pywebview en la distribución de escritorio.') from exc
     with data.connect() as db:
         if db.execute('SELECT 1').fetchone()[0] != 1:
             raise RuntimeError('SQLite no responde.')
@@ -1038,7 +1130,7 @@ def selftest():
 
 
 if __name__ == '__main__':
-    if getattr(sys,'frozen',False) and (os.name=='nt' or sys.platform=='darwin'):
+    if getattr(sys,'frozen',False) and os.name=='nt':
         # PyInstaller --windowed sets stdout/stderr to None on Windows.
         # Redirect them before the first print: otherwise the EXE would quit silently.
         if sys.stdout is None or sys.stderr is None:

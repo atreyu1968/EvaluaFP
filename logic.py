@@ -66,7 +66,8 @@ def extract_program(path):
         from docx.text.paragraph import Paragraph
         from docx.table import Table
         doc=Document(str(path))
-        # Respeta el orden real de párrafos y tablas, donde a menudo figuran los CE.
+        # Respeta el orden real de párrafos y tablas. Los CE pueden estar en
+        # tablas intercaladas; moverlas al final separa letra y enunciado.
         parts=[]
         for block in doc.iter_inner_content():
             if isinstance(block,Paragraph):
@@ -148,7 +149,8 @@ En preguntas test usa exactamente cuatro opciones, una sola correcta (A/B/C/D) y
 TÍTULO: {title}\nINDICACIONES ADICIONALES: {additional[:5000]}\nPLAN DE PREGUNTAS: {json.dumps(slots,ensure_ascii=False)}'''
     # Si existen materiales activos, no se permite generar basándose solo en el CE.
     if sources:
-        # Un pasaje se envía una vez por lote; se indican las preguntas autorizadas.
+        # Deduplicación de pasajes: un libro no debe reenviarse 8 veces
+        # cuando varias preguntas utilizan los mismos fragmentos.
         allowed=[];unique_passages={}
         for slot in slots:
             chunks=sources.get(slot['number'],[])

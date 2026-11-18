@@ -1,7 +1,7 @@
 'use strict';
 const S = {page:'inicio', modules:[], moduleId:null, moduleDetails:null, exams:[], examId:null,
   examModuleId:null, examDetails:null, submissions:[], subId:null, subDetails:null,
-  uploadExamId:null, uploadStudentId:null, queue:[], pageIndex:0, proposal:null, aiSettings:null, busy:false};
+  uploadExamId:null, uploadStudentId:null, queue:[], pageIndex:0, proposal:null, aiSettings:null, busy:false, manualDraft:null};
 const E = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const V = v=>v==null?'No indicada':String(v)+' %';
 const $ = sel=>document.querySelector(sel);
@@ -114,7 +114,7 @@ async function viewPrograms(){
  if(!S.moduleId && S.modules.length) S.moduleId=S.modules[0].id;
  S.moduleDetails=S.moduleId?await API('/api/modules/'+S.moduleId):null;
  const d=S.moduleDetails;
- $('#main').innerHTML=`${intro('Importe la programación en PDF, DOCX o texto. La IA propone RA, criterios y ponderaciones; el docente confirma o corrige los datos antes de generar exámenes.')}
+ $('#main').innerHTML=`${intro('Importe la programación en PDF, DOCX o texto. Los CE sin peso indicado se ponderan por igual y cada RA recibe un peso proporcional al número de CE; las ponderaciones expresas se respetan y pueden editarse.')}
  <div class="panel"><h2>Nuevo módulo formativo</h2><form id="create-module" class="formgrid">
  <div class="field"><label>Curso académico</label><input required name="academic_year" value="2026-2027" placeholder="2026-2027"></div>
  <div class="field"><label>Ciclo formativo</label><input required name="cycle" placeholder="CFGM Gestión Administrativa"></div>
@@ -126,19 +126,24 @@ async function viewPrograms(){
 }
 function renderModule(d){const {module:m,outcomes,criteria,students,programmings,materials}=d;
  const rs=outcomes.map(r=>`<div class="item"><div class="grow"><div class="title">${E(r.code)} · ${E(r.description)}</div>
- <div class="detail">Ponderación del RA sobre el módulo: <b>${V(r.weight)}</b></div></div>
+ <div class="detail">Ponderación del RA sobre el módulo: <b>${V(r.weight)}</b> · ${E(r.weight_origin==='default'?'Automática por número de CE':r.weight_origin==='manual'?'Personalizada por el docente':r.weight_origin==='programming'?'Programación':'Existente')}</div></div>
  <div class="right"><button class="btn secondary smallbtn" data-action="edit-outcome" data-id="${r.id}">Editar RA</button></div></div>
  ${criteria.filter(c=>c.outcome_id===r.id).map(c=>`<div class="item" style="margin-left:17px;background:#fafdff"><div class="grow"><div class="title">${E(c.code)}</div><div class="detail">${E(c.description)}</div>
- <div class="detail">Peso dentro del RA: <b>${V(c.weight)}</b></div></div><button class="btn mutedbtn smallbtn" data-action="edit-criterion" data-id="${c.id}">Editar CE</button></div>`).join('')}`).join('');
- const proposal=S.proposal?`<div class="panel"><h2>Propuesta de extracción pendiente de revisión</h2><div class="hint warning">Revise todos los pesos y descripciones. Un valor null significa que no hay una ponderación inequívoca. El análisis no modifica automáticamente los CE existentes.</div>
+ <div class="detail">Peso dentro del RA: <b>${V(c.weight)}</b> · ${E(c.weight_origin==='default'?'Automático, igual por CE':c.weight_origin==='manual'?'Personalizado':c.weight_origin==='programming'?'Programación':'Existente')}</div></div><button class="btn mutedbtn smallbtn" data-action="edit-criterion" data-id="${c.id}">Editar CE</button></div>`).join('')}`).join('');
+ const proposal=S.proposal?`<div class="panel"><h2>Propuesta de extracción pendiente de revisión</h2><div class="hint warning">Revise todos los pesos y descripciones. Un valor null significa que no se indica una ponderación expresa. Al confirmar, EvalúaFP asignará pesos iguales a los CE y proporcionales a su número para los RA, salvo valores expresos. Los pesos se podrán editar posteriormente.</div>
  ${S.proposal.warnings?.length?`<p class="small">Advertencias: ${S.proposal.warnings.map(E).join(' · ')}</p>`:''}
- ${S.proposal.coverage?`<div class="hint"><strong>Control de cobertura:</strong> RA citados: ${S.proposal.coverage.ra_cited} · RA acreditados: ${S.proposal.coverage.ra_accepted} · CE propuestos: ${S.proposal.coverage.ce_proposed} · CE acreditados: ${S.proposal.coverage.ce_accepted} · CE descartados: ${S.proposal.coverage.ce_discarded}. <strong>Solo los acreditados se ofrecen para importar.</strong></div>`:''}
- ${/t[eé]cnica contable/i.test(m.name)?`<p class="small">Revise los RA y CE en el <a target="_blank" rel="noopener noreferrer" href="https://www.boe.es/eli/es/rd/2009/10/30/1631">RD 1631/2009 (Técnica Contable, código 0441)</a>. Los pesos deben confirmarse por separado.</p>`:''}
+ ${S.proposal.coverage?`<div class="hint"><strong>Control de cobertura:</strong> RA citados: ${S.proposal.coverage.ra_cited} · RA acreditados: ${S.proposal.coverage.ra_accepted} · CE propuestos por IA: ${S.proposal.coverage.ce_proposed} · CE acreditados: ${S.proposal.coverage.ce_accepted} · CE descartados: ${S.proposal.coverage.ce_discarded}. <strong>Solo los acreditados se ofrecen para importar.</strong></div>`:''}
+ ${/t[eé]cnica contable/i.test(m.name)?`<p class="small">Para este módulo puede contrastar los enunciados oficiales de RA y CE en el <a target="_blank" rel="noopener noreferrer" href="https://www.boe.es/eli/es/rd/2009/10/30/1631">RD 1631/2009 (Técnica Contable, código 0441)</a>. Esta consulta no cambia los pesos de la programación.</p>`:''}
+
  <form id="apply-proposal"><div class="field"><label>Resultados y criterios propuestos (JSON editable)</label><textarea rows="15" name="outcomes_json">${E(JSON.stringify(S.proposal.outcomes,null,2))}</textarea></div>
  <div class="actions"><button class="btn" type="submit">Confirmar e importar RA/CE</button><button type="button" class="btn secondary" data-action="discard-proposal">Descartar</button></div></form></div>`:'';
  return `<div class="grid2"><section class="panel"><h2>Programaciones originales</h2>
  <form id="upload-program"><input type="hidden" name="module_id" value="${m.id}">
  <div class="field"><label>PDF, DOCX, TXT o Markdown</label><input required name="document" type="file" accept=".pdf,.docx,.txt,.md"></div><div class="actions"><button class="btn" type="submit">Guardar original y extraer texto</button></div></form>
+ <div class="hint" style="margin-top:14px"><strong>Consulta de normativa oficial en caso de duda</strong>
+ <p>Obtenga RA y CE de una disposición del BOE. Se mostrará una propuesta para revisión, sin inventar ponderaciones normativas ni modificar notas. Se aplicarán los pesos automáticos docentes cuando no consten.</p>
+ <label>Identificador de la disposición (BOE-A-AAAA-NNN)</label><input id="official-boe-id" placeholder="${/t[eé]cnica contable/i.test(m.name)?'BOE-A-2009-19148':'BOE-A-AAAA-NNN'}">
+ <button type="button" class="btn secondary" data-action="official-curriculum" style="margin-top:8px">Consultar RA/CE en el BOE</button></div>
  ${programmings.length?`<div class="section-title">Documentos guardados</div><div class="itemlist">${programmings.map(p=>`<div class="item"><div><b>${E(p.filename)}</b><div class="small">${p.text_length} caracteres de texto extraído</div></div><button class="btn secondary smallbtn" data-action="analyze-program" data-id="${p.id}">Analizar con IA</button></div>`).join('')}</div>`:empty('No hay programación cargada.')}
  </section><section class="panel"><h2>Material didáctico asociado a la programación</h2>
  <p class="small">Suba apuntes, unidades didácticas o libros de texto en PDF, DOCX, TXT o MD. Se conserva cada original y se extrae texto por página (PDF) o bloque (otros formatos). Si hay material activo, <strong>la IA solo podrá generar preguntas con pasajes de ese material</strong> y se guardará la referencia exacta de cada pregunta.</p>
@@ -158,13 +163,13 @@ function renderModule(d){const {module:m,outcomes,criteria,students,programmings
  ${rs||empty('No hay RA o criterios. Impórtelos con IA o añádalos manualmente.')}
  <div class="grid2" style="margin-top:19px"><form id="create-outcome"><h3>Añadir RA manualmente</h3><div class="formgrid">
  <div class="field"><label>Código RA</label><input required name="code" placeholder="RA1"></div>
- <div class="field"><label>Peso RA (%)</label><input name="weight" type="number" min="0" max="100" step=".01" placeholder="No indicado"></div></div>
+ <div class="field"><label>Peso RA (%)</label><input name="weight" type="number" min="0" max="100" step=".01" placeholder="Automático si vacío"></div></div>
  <div class="field"><label>Descripción del RA</label><textarea required name="description"></textarea></div>
  <button type="submit" class="btn secondary">Guardar RA</button></form>
  <form id="create-criterion"><h3>Añadir CE manualmente</h3>
  <div class="field"><label>Resultado al que pertenece</label><select required name="outcome_id">${opt(outcomes,'',r=>r.code)}</select></div>
  <div class="formgrid"><div class="field"><label>Código CE</label><input required name="code" placeholder="RA1.a"></div>
- <div class="field"><label>Peso dentro del RA (%)</label><input type="number" step=".01" min="0" max="100" name="weight" placeholder="No indicado"></div></div>
+ <div class="field"><label>Peso dentro del RA (%)</label><input type="number" step=".01" min="0" max="100" name="weight" placeholder="Automático si vacío"></div></div>
  <div class="field"><label>Descripción del criterio</label><textarea required name="description"></textarea></div>
  <button class="btn secondary" type="submit" ${!outcomes.length?'disabled':''}>Guardar CE</button></form></div></section>`;
 }
@@ -196,17 +201,21 @@ async function viewExams(){
  ${d&&d.criteria.length?d.outcomes.map(r=>`<div><label class="checkbox-card"><input type="checkbox" data-ra="${r.id}" class="ra-checkbox"><span><strong>${E(r.code)} · ${E(r.description)}</strong><span class="small">Peso del RA: ${V(r.weight)} · seleccionar todos sus criterios</span></span></label>
  ${d.criteria.filter(c=>c.outcome_id===r.id).map(c=>`<label class="checkbox-card" style="margin-left:16px"><input type="checkbox" name="criteria_ids" value="${c.id}" data-parent="${r.id}"><span><strong>${E(c.code)} · ${E(c.description)}</strong><span class="small">Peso del CE: ${V(c.weight)} · RA: ${V(c.outcome_weight)}</span></span></label>`).join('')}</div>`).join(''):empty('Este módulo no tiene criterios. Complete antes la programación.')}
  <div class="actions"><button type="submit" class="btn" ${!d?.criteria?.length?'disabled':''}>Generar examen y rúbrica</button></div></form>`:empty('Cree un módulo en Programaciones.')}</section>
- <section class="panel"><details><summary><strong>Alternativa: crear un examen manual sin utilizar la API de IA</strong></summary>
- <p class="small">Puede preparar una o varias preguntas en formato JSON. Es útil para comprobar el visor, la subida multipágina y la validación sin contratar una API. El identificador del CE debe existir en el módulo seleccionado.</p>
+ <section class="panel"><details><summary><strong>Crear un examen manual y clasificar sus preguntas por RA/CE</strong></summary>
+ <p class="small">Introduzca sus propias preguntas (test, desarrollo o problemas). Puede asignar sus CE manualmente o pedir a la IA que proponga, a partir del currículo validado, los RA/CE que realmente evalúa cada pregunta. Se admite más de un CE por pregunta; la suma de porcentajes de una pregunta debe ser 100 %. Revise las propuestas antes de guardar.</p>
  <form id="manual-exam"><div class="formgrid"><div class="field"><label>Módulo</label><select name="module_id">${opt(S.modules,S.examModuleId,x=>x.name)}</select></div>
- <div class="field"><label>Título</label><input name="title" required placeholder="Examen redactado por el docente"></div>
+ <div class="field"><label>Título</label><input name="title" required value="${E(S.manualDraft?.title||'')}" placeholder="Examen redactado por el docente"></div>
  <div class="field"><label>Centro educativo</label><input name="center_name" placeholder="Nombre del centro"></div>
  <div class="field"><label>Duración (minutos)</label><input name="duration_minutes" type="number" min="10" max="480" value="60"></div></div>
- <div class="field"><label>Preguntas, puntuaciones y rúbricas (lista JSON)</label><textarea name="questions_json" rows="10" required>${E(JSON.stringify(d?.criteria?.length?[{
-   criterion_id:d.criteria[0].id,kind:'desarrollo',prompt:'Desarrolle la respuesta a la cuestión propuesta.',points:10,
+ <div class="field"><label>Preguntas, puntuaciones y rúbricas (lista JSON)</label><textarea name="questions_json" rows="10" required>${E(S.manualDraft?.questions_json||JSON.stringify(d?.criteria?.length?[{
+   kind:'desarrollo',prompt:'Desarrolle la respuesta a la cuestión propuesta.',points:10,
    ideal_answer:'Describa aquí la respuesta modelo antes de utilizar el examen.',rubric:[{criterion:'Exactitud de los contenidos',weight_pct:100}]
  }]:[],null,2))}</textarea></div>
- <div class="actions"><button class="btn secondary" type="submit" ${!d?.criteria?.length?'disabled':''}>Guardar examen manual</button></div></form></details></section>
+ <div class="actions"><button class="btn secondary" type="button" data-action="manual-align">Analizar preguntas y proponer RA/CE con IA</button>
+ <button class="btn" type="submit" ${!d?.criteria?.length?'disabled':''}>Guardar examen manual</button></div>
+ <div class="hint" id="manual-curriculum-result">La IA únicamente propone vínculos a criterios ya existentes en el módulo. Si falta el currículo, impórtelo desde la programación o la normativa oficial antes de analizar. La clasificación no genera ni califica respuestas.</div>
+ <label class="checkbox-card"><input type="checkbox" id="manual-confirm" required><span>He revisado los RA, CE, porcentajes y justificaciones asignados a todas las preguntas. Confirmo esta distribución como docente.</span></label>
+ </form></details></section>
  <section class="panel"><div class="subhead"><h2>Exámenes disponibles</h2><span class="badge">${S.exams.length} exámenes</span></div>
  ${S.exams.length?`<div class="itemlist">${S.exams.map(e=>`<div class="item"><div><div class="title">${E(e.title)}</div><div class="detail">${E(e.module_name)} · ${e.question_count} preguntas · ${e.total_points} puntos · ${E(e.difficulty)} · modelo ${E(e.variant_label)} · ${e.submissions_count} entregas${e.bank_size?` · Banco ${e.bank_size} preguntas`:''}</div></div>
  <div class="right">${e.batch_id?`<button class="btn mutedbtn smallbtn" data-action="view-bank" data-id="${e.batch_id}">Banco</button>`:''}<button class="btn secondary smallbtn" data-action="open-exam" data-id="${e.id}">Ver preguntas</button><a class="btn mutedbtn smallbtn" href="/api/exams/${e.id}/pdf">PDF modelo ${E(e.variant_label)}</a>${e.batch_id?`<a class="btn mutedbtn smallbtn" href="/api/exam-batches/${e.batch_id}/pdf.zip">ZIP modelos</a><a class="btn mutedbtn smallbtn" href="/api/exam-batches/${e.batch_id}/soluciones.zip">ZIP solucionarios (docente)</a>`:''}</div></div>`).join('')}</div>`:empty('Todavía no hay exámenes.')}</section>
@@ -460,16 +469,18 @@ async function doSubmit(form){
  if(id==='apply-proposal'){
  let parsed;
  try{parsed=JSON.parse(form.querySelector('[name=outcomes_json]').value)}catch(e){toast('JSON no válido: '+e.message,true);return;}
- const result=await busy(()=>API('/api/programmings/apply','POST',{module_id:S.moduleId,outcomes:parsed}),'RA y CE confirmados.');
+ const result=await busy(()=>API('/api/programmings/apply','POST',{module_id:S.moduleId,outcomes:parsed,
+      source_url:S.proposal?.source_url||null, consulted_at:S.proposal?.consulted_at||null}),'RA y CE confirmados.');
  if(result){S.proposal=null;await page('programaciones');}return;}
  if(id==='manual-exam'){
    let q;
    try{q=JSON.parse(form.elements.questions_json.value);}catch(ex){toast('Preguntas JSON no válidas: '+ex.message,true);return;}
    const result=await busy(()=>API('/api/exams/manual','POST',{
       module_id:Number(form.elements.module_id.value),title:form.elements.title.value,questions:q,
-      center_name:form.elements.center_name.value,duration_minutes:Number(form.elements.duration_minutes.value)
+      center_name:form.elements.center_name.value,duration_minutes:Number(form.elements.duration_minutes.value),
+      teacher_confirmed_curriculum:document.getElementById('manual-confirm')?.checked===true
    }),'Examen manual archivado.');
-   if(result){S.examId=result.id;await page('examenes');}return;
+   if(result){S.manualDraft=null;S.examId=result.id;await page('examenes');}return;
  }
  if(id==='generate-exam'){
  const f=formObject(form);
@@ -484,7 +495,7 @@ async function doSubmit(form){
    }
     const bankTarget=Number(f.question_count)*Math.max(3,Number(f.model_count)||1);
     const info=document.createElement('div');info.className='panel';info.setAttribute('role','status');
-    info.innerHTML='<h3>Generando examen con IA</h3><p id="exam-progress-detail"></p><p class="small">Se agrupan varios CE por petición y se respetan el banco triple, las rúbricas y la ausencia de repetidos. No cierre la aplicación.</p>';
+    info.innerHTML='<h3>Generando examen con IA</h3><p id="exam-progress-detail"></p><p class="small">El generador agrupa varios CE por petición. Se conservan las rúbricas, el banco triple y las preguntas distintas. No cierre la aplicación.</p>';
     form.parentNode.insertBefore(info,form.nextSibling);
     const began=Date.now();
     const tick=()=>{const detail=info.querySelector('#exam-progress-detail');if(detail)detail.textContent=`Banco solicitado: al menos ${bankTarget} preguntas · ${f.model_count} modelo(s) · ${Math.floor((Date.now()-began)/1000)} s transcurridos. Esperando respuesta del proveedor...`;};
@@ -624,6 +635,69 @@ document.addEventListener('click',async event=>{
    const result=await busy(()=>API('/api/materials/active','POST',{module_id:S.moduleId,material_id:id,active:!active}),'Estado del material actualizado.');
    if(result)await page('programaciones');return;}
  if(action==='discard-proposal'){S.proposal=null;await page('programaciones');return;}
+ if(action==='manual-official'){
+   const form=$('#manual-exam');if(!form)return;
+   const moduleId=Number(form.elements.module_id.value);
+   const boeId=prompt('Identificador del BOE que contiene el currículo (en blanco para Técnica Contable):','');
+   if(boeId===null)return;
+   if(!confirm('Se consultará el BOE para obtener RA y CE oficiales. No se enviarán exámenes ni datos del alumnado. ¿Continuar?'))return;
+   const result=await busy(()=>API('/api/curriculum/official','POST',{
+      module_id:moduleId,boe_id:boeId||null,authorize_official_query:true}));
+   if(result){
+     S.manualDraft={module_id:moduleId,title:form.elements.title.value,
+       questions_json:form.elements.questions_json.value};
+     S.moduleId=moduleId;S.examModuleId=moduleId;S.proposal=result;
+     await page('programaciones');toast('Revise y confirme el currículo. Las preguntas manuales permanecerán en borrador.');
+   }
+   return;
+ }
+ if(action==='manual-align'){
+   const form=$('#manual-exam');if(!form)return;
+   let qs;
+   try{qs=JSON.parse(form.elements.questions_json.value);if(!Array.isArray(qs))throw Error('Se requiere una lista JSON de preguntas.');}
+   catch(ex){toast('Revise primero el JSON de preguntas: '+ex.message,true);return;}
+   const moduleId=Number(form.elements.module_id.value);
+   const catalogue=await busy(()=>API('/api/modules/'+moduleId));
+   if(!catalogue)return;
+   if(!catalogue.criteria?.length){
+     toast('Este módulo aún no tiene CE. Consulte primero el currículo oficial o la programación.',true);
+     $('#manual-curriculum-result').innerHTML='No hay criterios validados para clasificar las preguntas. <button type="button" class="btn secondary" data-action="manual-official">Consultar el currículo oficial en el BOE</button>';
+     return;
+   }
+   if(!confirm('Se enviarán los enunciados y las descripciones de RA/CE al proveedor de IA elegido. No se enviarán datos de alumnos. ¿Autorizar este análisis?'))return;
+   toast('Comparando las preguntas con los RA y CE confirmados.');
+   const result=await busy(()=>API('/api/exams/manual/classify','POST',{module_id:Number(form.elements.module_id.value),questions:qs}));
+   if(!result)return;
+   const entries=[];
+   for(const assign of result.assignments){
+     const q=qs[assign.number-1];
+     if(assign.criteria?.length){
+       q.criteria_allocations=assign.criteria.map(a=>({criterion_id:a.criterion_id,weight_pct:a.weight_pct,confidence:a.confidence,rationale:a.rationale}));
+       delete q.criterion_id;
+       entries.push('<strong>Pregunta '+assign.number+'</strong>: '+assign.criteria.map(a=>E(a.ra_code)+' / '+E(a.criterion_code)+' ('+E(a.weight_pct)+' %) — '+E(a.rationale)).join('; '));
+     }else{
+       delete q.criteria_allocations;delete q.criterion_id;
+       entries.push('<strong>Pregunta '+assign.number+'</strong>: <b>pendiente de asignación docente</b>');
+     }
+   }
+   form.elements.questions_json.value=JSON.stringify(qs,null,2);
+   const warnings=(result.warnings||[]).map(w=>'<li>'+E(w)+'</li>').join('');
+   $('#manual-curriculum-result').innerHTML='<strong>Propuesta curricular con '+E(result.model)+'</strong><div>'+entries.map(e=>'<p>'+e+'</p>').join('')+'</div>'+(warnings?'<ul>'+warnings+'</ul>':'')+
+      '<p>Los datos se han incorporado al JSON para que pueda modificarlos. Compruebe que los porcentajes suman 100 % y confirme antes de guardar.</p>'+
+      (result.needs_review?'<button type="button" class="btn secondary" data-action="manual-official">Consultar el currículo oficial para completar CE</button>':'');
+   $('#manual-confirm').checked=false;
+   toast(result.needs_review?result.needs_review+' preguntas sin correspondencia clara: revise manualmente.':'Propuestas incorporadas. Revise y confirme antes de guardar.');
+   return;
+ }
+ if(action==='official-curriculum'){
+   const raw=$('#official-boe-id')?.value.trim();
+   if(!confirm('Se consultará únicamente la normativa oficial del BOE, sin enviar datos personales ni exámenes. La propuesta requiere revisión docente. ¿Continuar?'))return;
+   toast('Consultando el texto oficial y extrayendo RA y CE sin ponderaciones.');
+   const result=await busy(()=>API('/api/curriculum/official','POST',{
+      module_id:Number(S.moduleId),boe_id:raw||null,authorize_official_query:true}));
+   if(result){S.proposal=result;await page('programaciones');}
+   return;
+ }
  if(action==='analyze-program'){
   toast('Analizando la programación. Verifique después los pesos propuestos.');
   const result=await busy(()=>API('/api/programmings/analyze','POST',{programming_id:id}),'RA y CE extraídos: pendiente de confirmación.');
@@ -633,7 +707,7 @@ document.addEventListener('click',async event=>{
    const r=(isRa?S.moduleDetails.outcomes:S.moduleDetails.criteria).find(x=>x.id===id);
    const code=prompt('Código:',r.code);if(code===null)return;
    const description=prompt('Descripción:',r.description);if(description===null)return;
-   const weight=prompt('Ponderación (%) — dejar en blanco si no consta:',r.weight??'');if(weight===null)return;
+   const weight=prompt('Ponderación (%) — en blanco para peso automático:',r.weight??'');if(weight===null)return;
    const body={id,code,description,weight};
    if(isRa)body.module_id=S.moduleId;else body.outcome_id=r.outcome_id;
    const result=await busy(()=>API('/api/'+(isRa?'outcomes':'criteria'),'POST',body),'Ponderación y criterio guardados.');

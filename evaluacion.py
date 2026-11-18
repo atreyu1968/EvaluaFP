@@ -189,12 +189,14 @@ def sync_exam(d,instrument_id,replace=False):
     if not instrument or not instrument['exam_id']:raise ValueError('El instrumento no está vinculado a un examen.')
     allowed={r['criterion_id'] for r in d.execute(
         'SELECT criterion_id FROM evaluation_instrument_criteria WHERE instrument_id=?',(instrument_id,))}
-    records=d.execute('''SELECT s.student_id,s.id AS submission_id,q.criterion_id,
-                        SUM(c.teacher_score) AS scored,SUM(q.points) AS maximum
+    records=d.execute('''SELECT s.student_id,s.id AS submission_id,qc.criterion_id,
+                        SUM(c.teacher_score*qc.weight_pct/100.0) AS scored,
+                        SUM(q.points*qc.weight_pct/100.0) AS maximum
                         FROM submissions s JOIN corrections c ON c.run_id=s.current_run_id
                         JOIN exam_questions q ON q.id=c.question_id
+                        JOIN exam_question_criteria qc ON qc.question_id=q.id
                         WHERE s.exam_id=? AND s.status='validated' AND c.status='validated'
-                        GROUP BY s.student_id,s.id,q.criterion_id''',(instrument['exam_id'],)).fetchall()
+                        GROUP BY s.student_id,s.id,qc.criterion_id''',(instrument['exam_id'],)).fetchall()
     count=0;skipped=0
     for r in records:
         if r['criterion_id'] not in allowed or not r['maximum']:continue

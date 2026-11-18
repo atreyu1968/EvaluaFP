@@ -1,9 +1,27 @@
-## 1.0.4 — Rendimiento y extracción curricular verificable
+## Versión 1.0.6 — Ponderaciones automáticas y landing de presentación
 
-- Generación multcriterio, menos solicitudes a la IA, pasajes sin repeticiones.
-- RA y CE vinculados a texto literal, control de cobertura y descartes.
-- DOCX en orden de párrafos y tablas, indicadores de tiempo sin porcentajes simulados.
-- Avisos de código, RA204 y ponderaciones inconsistentes para Técnica Contable.
+- CE con idéntico peso global si la programación no dispone otra ponderación; RA proporcionales al número de CE.
+- Registro de procedencia por criterio y resultado en SQLite, con respeto de pesos manuales y documentados.
+- Reequilibrado automático al incorporar nuevos criterios.
+- Landing gratuita en docs/index.html con capturas reales de una demostración sin datos personales.
+- 72 pruebas automatizadas superadas. Compilación Windows y despliegue de Pages pendientes.
+
+## v1.0.5 — Asignación autónoma de RA/CE y fuentes oficiales
+
+- Clasificador de preguntas de exámenes manuales a RA/CE confirmados por el docente; justificaciones, indicador de confianza y asignación múltiple.
+- SQLite: nueva relación `exam_question_criteria` y preservación de datos antiguos.
+- Registro consolidado y sincronización de exámenes validados según la distribución de puntos por CE.
+- Consulta de normativa curricular en BOE, con extracción determinista, fuente, fecha de consulta y confirmación docente.
+- Borradores manuales conservados al consultar normativa desde el examen.
+- 65 pruebas automatizadas superadas; publicación del instalador de Windows pendiente de validar.
+
+## 1.0.4 — Rendimiento y análisis curricular fiable
+
+- Banco de preguntas multcriterio, menor número de llamadas secuenciales y pasajes deduplicados.
+- Propuestas RA/CE acreditadas contra texto literal; informe de cobertura y alertas.
+- Orden de extracción de párrafos y tablas DOCX corregido.
+- Indicador de tiempo transcurrido sin estimaciones ficticias de progreso.
+- Detecta casos curriculares conflictivos de Técnica Contable (código 0299/0441, RA204, 125 %).
 
 ## 1.0.3 — Corrección de nombres UTF-8 en subida de documentos
 

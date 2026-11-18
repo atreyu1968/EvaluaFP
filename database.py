@@ -136,6 +136,12 @@ def init():
         CREATE INDEX IF NOT EXISTS ix_corrections_submission ON corrections(submission_id);
         CREATE INDEX IF NOT EXISTS ix_audit_entity ON audit_log(entity,entity_id);
         ''')
+        # Origen de ponderaciones: automático, programación o decisión docente.
+        import weight_defaults
+        weight_defaults.migrate(d)
+        # Completa automáticamente los valores NULL antiguos, sin tocar pesos explícitos.
+        for module in d.execute('SELECT id FROM modules').fetchall():
+            weight_defaults.recalculate(d,module['id'])
         # Sistema de evaluación de unidades, instrumentos y evidencias.
         import evaluacion
         evaluacion.migrate(d)
@@ -174,6 +180,27 @@ def init():
         columns={r['name'] for r in d.execute('PRAGMA table_info(exams)')}
         if 'source_mode' not in columns:
             d.execute("ALTER TABLE exams ADD COLUMN source_mode TEXT NOT NULL DEFAULT 'criteria'")
+        # Vinculación plural pregunta ↔ CE: conservación de criterios previos y pesos por pregunta.
+        d.executescript("""
+        CREATE TABLE IF NOT EXISTS exam_question_criteria(
+          question_id INTEGER NOT NULL REFERENCES exam_questions(id) ON DELETE CASCADE,
+          criterion_id INTEGER NOT NULL REFERENCES criteria(id),
+          weight_pct REAL NOT NULL CHECK(weight_pct>0 AND weight_pct<=100),
+          confidence REAL, rationale TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY(question_id,criterion_id));
+        CREATE INDEX IF NOT EXISTS ix_exam_question_criteria_criterion
+          ON exam_question_criteria(criterion_id);
+        CREATE TRIGGER IF NOT EXISTS trg_evaluafp_exam_question_initial_criterion
+          AFTER INSERT ON exam_questions
+          BEGIN
+            INSERT OR IGNORE INTO exam_question_criteria
+              (question_id,criterion_id,weight_pct,confidence,rationale)
+              VALUES(NEW.id,NEW.criterion_id,100,1,'Asignación única del examen');
+          END;
+        """)
+        d.execute("""INSERT OR IGNORE INTO exam_question_criteria
+          (question_id,criterion_id,weight_pct,confidence,rationale)
+          SELECT id,criterion_id,100,1,'Asignación original previa a v1.0.5' FROM exam_questions""")
         _rebase_on_portable_start(d)
 
 
