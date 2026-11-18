@@ -2,7 +2,8 @@ PyMuPDF>=1.24,<2
 Pillow>=10,<13
 python-docx>=1.1,<2
 keyring>=25,<28
-pywebview==6.2.1; sys_platform == 'win32'
+pywebview==6.2.1; sys_platform == 'win32' or sys_platform == 'darwin'
+pywebview[qt]==6.2.1; sys_platform == 'linux'
 reportlab>=4.2,<5
 
 cryptography>=43,<47
