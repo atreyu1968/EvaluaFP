@@ -957,39 +957,28 @@ def open_interface(url):
 
 
 def run_desktop_window(url):
-    """Abrir ventana de escritorio propia usando WebView2, nunca navegador externo.
-
-    La importación deliberadamente ocurre en tiempo de ejecución para que
-    --selftest no necesite una sesión gráfica y para conservar los modos alternativos.
-    """
+    """Ventana del sistema: WebView2 (Windows), Cocoa (macOS) o Qt (Linux)."""
     try:
         import webview
     except ImportError as exc:
-        raise RuntimeError(
-            'Falta pywebview en este ejecutable. Compile la versión 0.7 mediante '
-            'crear_exe_windows.bat; no utilice el EXE de la versión anterior.'
-        ) from exc
+        raise RuntimeError('Falta pywebview. Compruebe las dependencias de su sistema operativo.') from exc
 
     window_title = 'EvalúaFP · Evaluación inteligente'
-    webview.create_window(
-        window_title, url+'?launch='+TOKEN,
-        width=1390, height=900, min_size=(900, 650),
-        resizable=True, confirm_close=False,
-    )
+    webview.create_window(window_title, url+'?launch='+TOKEN,
+                          width=1390, height=900, min_size=(900,650),
+                          resizable=True, confirm_close=False)
     try:
-        # Nunca recurrir al motor MSHTML de Internet Explorer.
-        from desktop_caption import colorize_caption
-        # La coloración nativa no afecta al funcionamiento si Windows no la admite.
-        webview.start(func=lambda: colorize_caption(window_title),gui='edgechromium')
+        if sys.platform == 'win32':
+            from desktop_caption import colorize_caption
+            webview.start(func=lambda: colorize_caption(window_title), gui='edgechromium')
+        elif sys.platform == 'darwin':
+            webview.start()
+        elif sys.platform.startswith('linux'):
+            webview.start(gui='qt')
+        else:
+            raise RuntimeError('Sistema operativo de escritorio no soportado.')
     except Exception as exc:
-        raise RuntimeError(
-            'No se ha podido abrir la ventana de escritorio. Compruebe que '
-            'Microsoft Edge WebView2 Runtime funciona en Windows. '
-            'Puede instalarlo desde https://developer.microsoft.com/microsoft-edge/webview2/. '
-            'Como alternativa temporal puede utilizar iniciar_navegador_windows.bat. '
-            f'Detalle técnico: {exc}'
-        ) from exc
-
+        raise RuntimeError(f'No se ha podido abrir la ventana de EvalúaFP en {sys.platform}: {exc}') from exc
 
 def main():
     server, url = start()
@@ -1033,7 +1022,7 @@ def selftest():
     if not callable(getattr(exportaciones,'export_excel',None)):
         raise RuntimeError('La exportación Excel no está incluida en el EXE.')
     # Asegura que PyInstaller ha incluido la biblioteca de interfaz nativa.
-    if os.name == 'nt':
+    if os.name == 'nt' or getattr(sys, 'frozen', False):
         try:
             import webview
             if not callable(getattr(webview, 'create_window', None)):
