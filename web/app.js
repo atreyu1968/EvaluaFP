@@ -132,6 +132,8 @@ function renderModule(d){const {module:m,outcomes,criteria,students,programmings
  <div class="detail">Peso dentro del RA: <b>${V(c.weight)}</b></div></div><button class="btn mutedbtn smallbtn" data-action="edit-criterion" data-id="${c.id}">Editar CE</button></div>`).join('')}`).join('');
  const proposal=S.proposal?`<div class="panel"><h2>Propuesta de extracción pendiente de revisión</h2><div class="hint warning">Revise todos los pesos y descripciones. Un valor null significa que no hay una ponderación inequívoca. El análisis no modifica automáticamente los CE existentes.</div>
  ${S.proposal.warnings?.length?`<p class="small">Advertencias: ${S.proposal.warnings.map(E).join(' · ')}</p>`:''}
+ ${S.proposal.coverage?`<div class="hint"><strong>Control de cobertura:</strong> RA citados: ${S.proposal.coverage.ra_cited} · RA acreditados: ${S.proposal.coverage.ra_accepted} · CE propuestos: ${S.proposal.coverage.ce_proposed} · CE acreditados: ${S.proposal.coverage.ce_accepted} · CE descartados: ${S.proposal.coverage.ce_discarded}. <strong>Solo los acreditados se ofrecen para importar.</strong></div>`:''}
+ ${/t[eé]cnica contable/i.test(m.name)?`<p class="small">Revise los RA y CE en el <a target="_blank" rel="noopener noreferrer" href="https://www.boe.es/eli/es/rd/2009/10/30/1631">RD 1631/2009 (Técnica Contable, código 0441)</a>. Los pesos deben confirmarse por separado.</p>`:''}
  <form id="apply-proposal"><div class="field"><label>Resultados y criterios propuestos (JSON editable)</label><textarea rows="15" name="outcomes_json">${E(JSON.stringify(S.proposal.outcomes,null,2))}</textarea></div>
  <div class="actions"><button class="btn" type="submit">Confirmar e importar RA/CE</button><button type="button" class="btn secondary" data-action="discard-proposal">Descartar</button></div></form></div>`:'';
  return `<div class="grid2"><section class="panel"><h2>Programaciones originales</h2>
@@ -480,9 +482,17 @@ async function doSubmit(form){
        f.authorize_external_transfer=true;
      }
    }
-   toast('Generando el banco ampliado y los modelos de examen. Puede requerir varias solicitudes a la IA.');
- const result=await busy(()=>API('/api/exams/generate','POST',f), 'Generados '+f.model_count+' modelo(s) y banco de preguntas.');
- if(result){S.examId=result.id;await page('examenes');}return;}
+    const bankTarget=Number(f.question_count)*Math.max(3,Number(f.model_count)||1);
+    const info=document.createElement('div');info.className='panel';info.setAttribute('role','status');
+    info.innerHTML='<h3>Generando examen con IA</h3><p id="exam-progress-detail"></p><p class="small">Se agrupan varios CE por petición y se respetan el banco triple, las rúbricas y la ausencia de repetidos. No cierre la aplicación.</p>';
+    form.parentNode.insertBefore(info,form.nextSibling);
+    const began=Date.now();
+    const tick=()=>{const detail=info.querySelector('#exam-progress-detail');if(detail)detail.textContent=`Banco solicitado: al menos ${bankTarget} preguntas · ${f.model_count} modelo(s) · ${Math.floor((Date.now()-began)/1000)} s transcurridos. Esperando respuesta del proveedor...`;};
+    tick();const timer=setInterval(tick,1000);
+    let result;
+    try{result=await busy(()=>API('/api/exams/generate','POST',f), 'Generados '+f.model_count+' modelo(s) y banco de preguntas.');}
+    finally{clearInterval(timer);info.remove();}
+    if(result){S.examId=result.id;await page('examenes');}return;}
  if(id==='upload-submission'){
  const f=new FormData();const d=formObject(form);
  f.append('exam_id',d.exam_id);f.append('student_id',d.student_id);
