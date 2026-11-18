@@ -45,9 +45,10 @@ jobs:
           New-Item -ItemType Directory -Force -Path $root, "$root/EvaluaFP_Datos", "$root/EvaluaFP_Copias" | Out-Null
           Copy-Item dist/EvaluaFP_Portatil.exe "$root/EvaluaFP_Portatil.exe"
           Copy-Item ejemplos/EvaluaFP.portable.json "$root/EvaluaFP.portable.json"
-          & "$root/EvaluaFP_Portatil.exe" --selftest
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "Código de salida del selftest: $LASTEXITCODE"
+          $exe = (Resolve-Path "$root/EvaluaFP_Portatil.exe").Path
+          $probe = Start-Process -FilePath $exe -ArgumentList '--selftest' -Wait -PassThru
+          if ($probe.ExitCode -ne 0) {
+            Write-Host "Código de salida del selftest: $($probe.ExitCode)"
             Get-ChildItem -Path "$root/EvaluaFP_Datos" -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
               if ($_.Name -in @('errores_inicio.log','registro_aplicacion.log')) {
                 Write-Host "DIAGNÓSTICO: $($_.FullName)"
