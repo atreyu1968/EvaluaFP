@@ -10,6 +10,7 @@ on:
       - 'requirements*.txt'
       - 'scripts/build_portable_unix.py'
       - 'storage_config.py'
+      - 'tests/**'
 
 permissions:
   contents: read
