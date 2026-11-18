@@ -1,0 +1,180 @@
+"""Rutas portables de EvalúaFP y migración segura de SQLite/documentos.
+
+Los ajustes de ubicación son independientes de SQLite, de modo que pueden
+cargarse ANTES de abrir la base de datos. Nunca guarda claves de API.
+"""
+from __future__ import annotations
+
+import json
+from contextlib import closing
+import os
+import shutil
+import sqlite3
+import sys
+from pathlib import Path
+
+APP_HOME = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve().parent
+PORTABLE_FILE = APP_HOME / 'EvaluaFP.portable.json'
+LOCAL_HOME = Path(os.environ.get('LOCALAPPDATA') or Path.home() / '.local' / 'share') / 'EvaluaFP'
+INSTALLED_FILE = LOCAL_HOME / 'ubicaciones.json'
+PORTABLE = (PORTABLE_FILE.is_file() or '--portable' in sys.argv or
+            os.environ.get('EVALUAFP_PORTABLE') == '1' or
+            (getattr(sys,'frozen',False) and 'portatil' in Path(sys.executable).stem.casefold()))
+
+
+def _read_json(path):
+    if not path.exists():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding='utf-8-sig'))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f'No se puede leer la configuración de carpetas: {path}: {exc}') from exc
+    if not isinstance(value, dict):
+        raise ValueError('La configuración de carpetas debe ser un objeto JSON.')
+    return value
+
+
+def config_file():
+    return PORTABLE_FILE if PORTABLE else INSTALLED_FILE
+
+
+def resolve_folder(value, portable=None):
+    """Acepta rutas relativas a la carpeta EXE o absolutas en el MISMO pendrive."""
+    portable = PORTABLE if portable is None else portable
+    text = str(value).strip()
+    if not text or '\x00' in text:
+        raise ValueError('Introduzca una carpeta de almacenamiento válida.')
+    path = Path(os.path.expandvars(text)).expanduser()
+    result = (path if path.is_absolute() else (APP_HOME if portable else LOCAL_HOME) / path).resolve()
+    if portable:
+        if os.name == 'nt' and result.drive.casefold() != APP_HOME.drive.casefold():
+            raise ValueError('En modo portátil, las carpetas deben estar en la misma unidad que el EXE.')
+        if result == APP_HOME:
+            raise ValueError('No guarde los datos directamente en la carpeta del EXE; utilice una subcarpeta.')
+    return result
+
+
+def _configured_folders():
+    config = _read_json(config_file())
+    forced = os.environ.get('EVALUAFP_DATA_DIR')
+    if forced:  # Utilizado por despliegues gestionados y pruebas existentes.
+        datadir = Path(forced).expanduser().resolve()
+        backups = datadir / 'copias'
+    elif PORTABLE:
+        datadir = resolve_folder(config.get('data_dir', 'EvaluaFP_Datos'))
+        backups = resolve_folder(config.get('backup_dir', 'EvaluaFP_Copias'))
+    else:
+        datadir = resolve_folder(config['data_dir']) if config.get('data_dir') else LOCAL_HOME
+        backups = resolve_folder(config['backup_dir']) if config.get('backup_dir') else datadir / 'copias'
+    if datadir == backups or datadir in backups.parents or backups in datadir.parents:
+        # Por defecto la instalación NO portátil conserva copias en DATA/copias.
+        if not PORTABLE and backups == datadir / 'copias':
+            return datadir, backups
+        raise ValueError('La carpeta de copias debe estar separada de la carpeta de datos.')
+    return datadir, backups
+
+
+DATA_DIR, BACKUP_DIR = _configured_folders()
+
+
+def get_info():
+    return {'portable':PORTABLE, 'app_dir':str(APP_HOME), 'data_dir':str(DATA_DIR),
+            'backup_dir':str(BACKUP_DIR),
+            'data_dir_edit':os.path.relpath(DATA_DIR,APP_HOME) if PORTABLE else str(DATA_DIR),
+            'backup_dir_edit':os.path.relpath(BACKUP_DIR,APP_HOME) if PORTABLE else str(BACKUP_DIR), 'configuration_file':str(config_file()),
+            'secret_mode':'contraseña maestra (AES-256-GCM)' if PORTABLE else 'credenciales del sistema'}
+
+
+def _writable(path):
+    path.mkdir(parents=True, exist_ok=True)
+    probe = path / '.evaluafp_permiso.tmp'
+    with probe.open('wb') as stream:
+        stream.write(b'Prueba de escritura EvaluaFP')
+    probe.unlink()
+
+
+def _atomic_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name+'.tmp')
+    tmp.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
+    tmp.replace(path)
+
+
+def _nested(first, second):
+    return first == second or first in second.parents or second in first.parents
+
+
+def relocate(data_dir, backup_dir, *, migrate=True):
+    """Copia base y originales al destino; conserva fuentes y requiere reinicio.
+
+    Los archivos existentes nunca se sobrescriben. La nueva ruta se activa
+    únicamente tras completar con éxito todos los pasos y guardar el JSON.
+    """
+    if os.environ.get('EVALUAFP_DATA_DIR'):
+        raise ValueError('Las rutas están administradas por EVALUAFP_DATA_DIR; no se pueden cambiar aquí.')
+    new_data = resolve_folder(data_dir)
+    new_backup = resolve_folder(backup_dir)
+    if _nested(new_data, new_backup):
+        raise ValueError('Datos y copias no pueden estar contenidos uno dentro de otro.')
+    if new_data == DATA_DIR and new_backup == BACKUP_DIR:
+        return {'changed':False, 'restart_required':False}
+    if new_data != DATA_DIR and _nested(new_data, DATA_DIR):
+        raise ValueError('No se puede migrar la base a una carpeta dentro de la carpeta de datos anterior.')
+    if new_backup != BACKUP_DIR and _nested(new_backup, BACKUP_DIR):
+        raise ValueError('La nueva carpeta de copias no puede estar dentro de la anterior.')
+    if new_data != DATA_DIR and new_data.exists() and any(new_data.iterdir()):
+        raise ValueError('La nueva carpeta de datos debe estar vacía para evitar sobrescribir información.')
+    if new_backup != BACKUP_DIR and new_backup.exists() and any(new_backup.iterdir()):
+        raise ValueError('La nueva carpeta de copias debe estar vacía para evitar sobrescribir archivos.')
+    for path in (new_data, new_backup):
+        _writable(path)
+    if new_data != DATA_DIR:
+        if not migrate:
+            raise ValueError('Cambiar la carpeta de datos requiere migrar SQLite y los originales.')
+        # Primero copiamos todas las carpetas excepto las partes volátiles de SQLite.
+        for src in DATA_DIR.rglob('*'):
+            rel = src.relative_to(DATA_DIR)
+            dest = new_data / rel
+            if src.is_dir():
+                dest.mkdir(parents=True, exist_ok=True)
+            elif src.is_file() and src.name not in {'evaluafp.sqlite3','evaluafp.sqlite3-wal','evaluafp.sqlite3-shm'}:
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+        new_db_path = new_data / 'datos' / 'evaluafp.sqlite3'
+        new_db_path.parent.mkdir(parents=True, exist_ok=True)
+        # El backup API de sqlite3 crea una instantánea consistente incluso con WAL.
+        # IMPORTANTE EN WINDOWS: sqlite3.Connection.__exit__ confirma la
+        # transacción, pero NO cierra la conexión. 'closing' libera ambos
+        # archivos antes de salir de relocate y antes de limpiar temporales.
+        with closing(sqlite3.connect(DATA_DIR/'datos'/'evaluafp.sqlite3', timeout=30)) as srcdb:
+            with closing(sqlite3.connect(new_db_path, timeout=30)) as dstdb:
+                srcdb.backup(dstdb)
+                # Las versiones previas guardaban rutas absolutas; reubicarlas.
+                for table, column in [('programmings','local_path'),('materials','local_path'),
+                                      ('submissions','storage_path'),('source_files','local_path'),
+                                      ('pages','image_path')]:
+                    try:
+                        rows=dstdb.execute(f'SELECT id,{column} FROM {table}').fetchall()
+                    except sqlite3.OperationalError:
+                        continue
+                    for rid, raw in rows:
+                        old_path=Path(raw)
+                        try: rel=old_path.relative_to(DATA_DIR)
+                        except (ValueError,TypeError):continue
+                        dstdb.execute(f'UPDATE {table} SET {column}=? WHERE id=?',(str(new_data/rel),rid))
+                dstdb.commit()
+                if dstdb.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+                    raise RuntimeError('La copia de SQLite no ha superado la prueba de integridad.')
+    if new_backup != BACKUP_DIR:
+        for old_file in BACKUP_DIR.rglob('*') if BACKUP_DIR.exists() else []:
+            if old_file.is_file():
+                dest = new_backup / old_file.relative_to(BACKUP_DIR)
+                dest.parent.mkdir(parents=True,exist_ok=True)
+                shutil.copy2(old_file, dest)
+    # Se escribe lo último: ante interrupción continúa funcionando la ruta original.
+    values = {'mode':'portable' if PORTABLE else 'installed',
+              'data_dir':os.path.relpath(new_data,APP_HOME) if PORTABLE else str(new_data),
+              'backup_dir':os.path.relpath(new_backup,APP_HOME) if PORTABLE else str(new_backup)}
+    _atomic_json(config_file(), values)
+    return {'changed':True, 'restart_required':True, 'data_dir':str(new_data),
+            'backup_dir':str(new_backup), 'note':'Cierre EvaluaFP y vuelva a abrirlo. Los datos antiguos se han conservado.'}

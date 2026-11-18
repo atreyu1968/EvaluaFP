@@ -1,0 +1,10 @@
+EvalúaFP 0.7: ventana de escritorio predeterminada.
+
+Se han modificado app.py, requirements.txt, scripts/verificar_dependencias.py,
+crear_exe_windows.bat, crear_instalador_windows.bat, INICIAR_EVALUAFP.bat,
+iniciar_navegador_windows.bat, instalador/EvaluaFP.iss y README.md.
+Se ha añadido tests/test_desktop.py.
+
+Si aplica un parche sobre la versión 0.6.1, reemplácense los archivos
+homónimos, respetando las subcarpetas. Después ejecute crear_exe_windows.bat
+para generar un EXE NUEVO. Un EXE antiguo no cambia al actualizar el código.

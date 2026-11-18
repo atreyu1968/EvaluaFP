@@ -1,0 +1,26 @@
+EVALUAFP LOCAL 1.0.0 — ACTUALIZACION ACUMULATIVA 0.9.1 -> 1.0.0
+
+NOVEDADES
+  - Evaluación de módulos por unidad, trimestre, RA y CE.
+  - Instrumentos y notas manuales, CSV y exámenes ya validados.
+  - Auditoría, nota calculable versus cierre docente, informe justificativo PDF.
+  - Control de coherencia de ponderaciones (ejemplo Técnica Contable: 125 %).
+  - Configuración de carpeta de datos y de copias de seguridad.
+  - Modo USB portátil: rutas relativas junto al EXE y actualización automática de rutas.
+  - Clave API cifrada AES-256-GCM con contraseña maestra (no hash).
+  - Copias ZIP en carpeta configurada, incluida clave cifrada (sin contraseña).
+  - CREAR_VERSION_PENDRIVE.bat prepara el ejecutable portátil sin Inno Setup.
+
+INSTALACION / COMPILACION
+  1. Extraer el proyecto en Windows 10/11 x64.
+  2. Para distribucion USB ejecutar CREAR_VERSION_PENDRIVE.bat.
+  3. Copiar la carpeta dist\EvaluaFP_Portatil al USB (no solo su EXE si ya tiene datos).
+  4. Ejecutar EvaluaFP_Portatil.exe desde el USB.
+  5. En Ajustes, cifrar la clave API con contraseña maestra de 12+ caracteres.
+
+IMPORTANTE
+  - El EXE/instalador debe compilarse en Windows (no se incluyen binarios Windows).
+  - Mantenga copia de seguridad y use USB cifrado para datos reales de alumnado.
+  - No desconecte la memoria USB con la aplicación abierta.
+  - No borre la instalación local anterior hasta validar la migración.
+  - La calificación final exige validación docente y ponderaciones coherentes.

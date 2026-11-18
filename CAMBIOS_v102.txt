@@ -1,0 +1,8 @@
+EvalúaFP v1.0.2 · Additio por RA y CE
+- Exportación RA para configurar las competencias específicas.
+- Excel CE monocolumna en formato código, descripción y sigla RA.
+- Excel de equivalencias con pesos, unidades y trimestres.
+- Paquete ZIP con todos los archivos para configuración Additio.
+- Notas RA/CE en Excel/CSV/TSV sin instrumentos.
+- Separación de calificaciones definitivas y seguimiento.
+- Comprobación del importador de Additio pendiente en una cuenta real.

@@ -1,0 +1,17 @@
+EVALUAFP LOCAL 1.0.1 — CAMBIOS
+
+1. Módulo de evaluación: Excel XLSX y XLS auténtico (dependencias xlsxwriter y xlwt).
+2. Hoja independiente para importar grupo en Additio: Additio_Alumnado.xlsx; también CSV.
+3. Matrices de notas validadas CSV/TSV para cotejo y copiado de columnas en Additio.
+4. Notas finales pendientes o cierre obsoleto: celda vacía; estado pendiente.
+5. Incluye cierre explícito de conexiones SQLite en migración; evita WinError 32.
+6. Mejora mensajes de diagnóstico del ejecutable y de la prueba interna.
+7. Se conservan SQLite y los originales: no hay cambio de esquema.
+
+ADVERTENCIA: Additio permite importar alumnado desde Excel, pero la
+importación directa de TODAS las notas depende de la versión y estructura del
+cuaderno. Se ofrecen CSV/TSV verificables para copiar/pegar; no se promete
+sincronización mediante una API de Additio.
+
+La comprobación del EXE e instalador en Windows debe realizarse en el ordenador
+del usuario.

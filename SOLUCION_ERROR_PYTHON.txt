@@ -1,0 +1,31 @@
+EVALUAFP LOCAL 0.6 - ERROR DE PYTHON EN LAS VERSIONES 0.4 Y 0.5
+================================================================
+El error "La instalacion informa exito, pero no se ha encontrado Python" pertenece
+al mecanismo antiguo. EvaluaFP 0.6 YA NO UTILIZA EL INSTALADOR DE PYTHON.
+
+INSTRUCCIONES:
+1. Extraiga EvaluaFP_Local_v0.6 en una CARPETA NUEVA. No copie un solo BAT
+   encima de la version anterior, porque las versiones usan scripts distintos.
+2. Ejecute "crear_instalador_windows.bat". Se descargara el gestor uv 0.13.7
+   desde la distribucion oficial, verificando su huella SHA-256.
+3. El propio gestor instala Python 3.13 x64 en:
+   %LOCALAPPDATA%\EvaluaFP\python-gestionado
+4. Se crea .venv, se instalan dependencias, se prueban los modulos y
+   solo entonces se compila el EXE, se prueba y se crea el instalador.
+5. Para utilizar el programa sin compilar, ejecute INICIAR_EVALUAFP.bat.
+
+NO DESINSTALE PYTHON NI BORRE:
+  %LOCALAPPDATA%\EvaluaFP\datos
+  %LOCALAPPDATA%\EvaluaFP\almacen
+
+SI FALLA DE NUEVO:
+Ejecute DIAGNOSTICO_WINDOWS.bat. Envie el texto del error y el diagnostico:
+  %LOCALAPPDATA%\EvaluaFP\logs\diagnostico_v06.txt
+Revise la informacion antes de compartirla (puede incluir rutas locales).
+
+Un bloqueo de descargas de Github/Python-build-standalone/PyPI por proxy,
+antivirus o politica de red es diferente del fallo anterior. En este caso
+el error mostrara la fase concreta. No desactive las protecciones del equipo.
+
+NO se incluye un EXE compilado ni se garantiza el instalador en un equipo
+Windows no probado.

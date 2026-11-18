@@ -1,0 +1,16 @@
+EVALUAFP 0.6.1 - CORRECCION DEL FALSO ERROR DE PYTHON
+
+El registro demuestra que uv instalo Python 3.13.18 y creo el entorno .venv.
+La funcion de comprobacion de la v0.6 pasaba codigo Python con comillas dobles internas
+a PowerShell 5.1. El modo Legacy puede alterar las comillas al invocar python.exe.
+Ahora se ejecuta verificar_python.py como archivo, se comprueban version, 64 bits y SQLite,
+y se imprime cualquier excepcion sin ocultarla.
+
+EXTRAE LA CARPETA COMPLETA. No basta con reemplazar un solo archivo .bat.
+Para compilar: crear_instalador_windows.bat
+Para abrir sin compilar: INICIAR_EVALUAFP.bat
+
+No borres %LOCALAPPDATA%\EvaluaFP ni los datos que contienen.
+Si aparece otro error, envia preparacion_windows.log (revisando posibles datos privados).
+
+No se ha compilado un EXE de Windows en este entorno.
