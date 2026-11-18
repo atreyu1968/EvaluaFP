@@ -2,7 +2,7 @@
 
 **Aplicación local para la creación, corrección asistida y evaluación de instrumentos de Formación Profesional, organizada por resultados de aprendizaje (RA) y criterios de evaluación (CE).**
 
-**Versión del código:** 1.0.3 · **Desarrollador:** Francisco Javier González Rolo · **Sistema principal:** Windows 10/11 (x64) · **Base de datos:** SQLite · **Interfaz:** HTML/CSS/JavaScript con ventana WebView2.
+**Versión del código:** 1.0.4 · **Desarrollador:** Francisco Javier González Rolo · **Sistema principal:** Windows 10/11 (x64) · **Base de datos:** SQLite · **Interfaz:** HTML/CSS/JavaScript con ventana WebView2.
 
 > **Estado:** proyecto en desarrollo. La ejecución automatizada de 43 pruebas ha concluido correctamente en el entorno de desarrollo; la compilación, la ventana gráfica y el instalador deben verificarse en Windows antes de distribuir la aplicación. La calificación definitiva requiere validación docente.
 
@@ -127,3 +127,16 @@ la estructura SQLite ni exige borrar datos; requiere recompilar el EXE.
 Para aplicar el parche sobre el código 1.0.2, sustituye `app.py`,
 `web/index.html` y añade `tests/test_multipart_unicode.py`. Después ejecuta
 `crear_exe_windows.bat` o `CREAR_VERSION_PENDRIVE.bat`.
+
+
+## Versión 1.0.4 — Rendimiento y verificación de RA/CE
+
+- Banco mínimo triple en lotes multcriterio (hasta 8 preguntas test, 6 de desarrollo o 4 problemas): menos solicitudes secuenciales, ponderaciones y tipos preservados, sin duplicados entre modelos.
+- Los fragmentos de material se envían una sola vez por lote y se verifican las citas.
+- Indicador de tiempo transcurrido en la pantalla; no es un porcentaje ficticio del proveedor.
+- Propuestas curriculares contrastadas contra el texto literal original: los CE sin enunciados completos verificables se descartan y se señalan. Se muestra cobertura RA/CE.
+- Se respeta el orden de párrafos y tablas de los DOCX.
+- La programación de Técnica Contable aportada contiene referencias RA1–RA5 pero no todos los enunciados completos de CE, asigna código 0299 en lugar de 0441 (RD 1631/2009), contiene RA204 y ponderaciones aparentemente incompatibles (125 %). Requiere revisión docente y, en su caso, completar currículo oficial.
+- Sin migración SQLite. Recompila el ejecutable tras actualizar el código. Las pruebas locales son 55; falta verificar la mejora con DeepSeek real y la compilación Windows.
+
+Referencia normativa: https://www.boe.es/eli/es/rd/2009/10/30/1631
