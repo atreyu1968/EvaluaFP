@@ -1038,7 +1038,7 @@ def selftest():
 
 
 if __name__ == '__main__':
-    if getattr(sys,'frozen',False) and os.name=='nt':
+    if getattr(sys,'frozen',False) and (os.name=='nt' or sys.platform=='darwin'):
         # PyInstaller --windowed sets stdout/stderr to None on Windows.
         # Redirect them before the first print: otherwise the EXE would quit silently.
         if sys.stdout is None or sys.stderr is None:
