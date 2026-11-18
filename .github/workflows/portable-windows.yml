@@ -57,6 +57,9 @@ jobs:
             }
             throw 'No se ha superado la prueba de arranque del EXE.'
           }
+          # El selftest crea una base SQLite y registros de prueba: no distribuirlos.
+          Remove-Item -Path "$root/EvaluaFP_Datos" -Recurse -Force
+          New-Item -ItemType Directory -Force -Path "$root/EvaluaFP_Datos", "$root/EvaluaFP_Copias" | Out-Null
           Compress-Archive -Path "$root/*" -DestinationPath "dist/EvaluaFP_Portatil_${ver}_windows_x64.zip" -CompressionLevel Optimal -Force
       - name: Publicar paquete Windows
         uses: actions/upload-artifact@v4
