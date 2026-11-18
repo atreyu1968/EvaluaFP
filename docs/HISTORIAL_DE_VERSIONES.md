@@ -1,3 +1,9 @@
+## 1.0.3 — Corrección de nombres UTF-8 en subida de documentos
+
+- Arreglado el fallo de `email.header.Header` en `multipart/form-data` con nombres acentuados.
+- Compatibilidad con nombres Unicode y parámetros de nombre RFC 2231.
+- Pruebas de regresión para PDF/DOCX y subida de programaciones.
+
 # EvalúaFP Local 1.0.2 — Exportación curricular para Additio (FP)
 
 Esta actualización corrige los archivos destinados a Additio: **las notas exportadas se organizan por RA y CE, no por examen ni instrumento**. Los instrumentos siguen en el expediente interno de EvalúaFP para justificar cada calificación.
