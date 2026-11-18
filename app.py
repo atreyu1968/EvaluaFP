@@ -1,6 +1,7 @@
 """EvalúaFP: aplicación de escritorio Windows, interfaz HTML y SQLite local."""
 from __future__ import annotations
 import email
+import email.policy
 import hashlib
 import html
 import io
@@ -29,7 +30,7 @@ import storage_config
 import evaluacion
 import exportaciones
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 TOKEN = secrets.token_urlsafe(32)
 WEB = (Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'web')
 
@@ -50,15 +51,18 @@ def multipart(handler):
     if not ct.startswith('multipart/form-data'):
         raise ValueError('Se requiere una carga multipart/form-data.')
     raw=handler.rfile.read(size)
-    mime=email.message_from_bytes(f'MIME-Version: 1.0\r\nContent-Type: {ct}\r\n\r\n'.encode()+raw)
+    # Navegadores envían nombres UTF-8 en Content-Disposition (tildes, guiones, etc.).
+    # La política MIME antigua ('compat32') devuelve email.header.Header y rompe re.search.
+    mime=email.message_from_bytes(
+        f'MIME-Version: 1.0\r\nContent-Type: {ct}\r\n\r\n'.encode()+raw,
+        policy=email.policy.default.clone(utf8=True))
     if not mime.is_multipart():
         raise ValueError('Formulario multipart no válido.')
     fields={}; files=[]
     for part in mime.get_payload():
-        disp=part.get('Content-Disposition','')
-        match=re.search(r'(?:^|;)\s*name="([^"]+)"',disp)
-        if not match: continue
-        name=match.group(1)
+        # get_param descodifica y maneja encabezados Unicode y parámetros RFC 2231.
+        name=part.get_param('name', header='content-disposition')
+        if not isinstance(name, str) or not name: continue
         filename=part.get_filename()
         if filename is not None:
             files.append((name,Path(filename.replace('\\','/')).name, part.get_payload(decode=True) or b''))
@@ -359,7 +363,7 @@ def register_students(db, module_id, incoming):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='EvaluaFP/1.0.2'
+    server_version='EvaluaFP/1.0.3'
     def log_message(self,format,*args):
         # No vuelca tokens, claves ni datos de alumnado en stdout.
         return
