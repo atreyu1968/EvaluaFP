@@ -40,7 +40,7 @@ jobs:
       - name: Preparar carpeta portátil y verificar
         shell: pwsh
         run: |
-          $ver = (Select-String -Path app.py -Pattern 'APP_VERSION\\s*=\\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          $ver = (Select-String -Path app.py -Pattern 'APP_VERSION\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
           $root = 'dist/EvaluaFP_Portatil_Windows'
           New-Item -ItemType Directory -Force -Path $root, "$root/EvaluaFP_Datos", "$root/EvaluaFP_Copias" | Out-Null
           Copy-Item dist/EvaluaFP_Portatil.exe "$root/EvaluaFP_Portatil.exe"
