@@ -175,3 +175,11 @@ Para aplicar el parche sobre el código 1.0.2, sustituye `app.py`,
 - Sin migración SQLite. Recompila el ejecutable tras actualizar el código. Las pruebas locales son 55; falta verificar la mejora con DeepSeek real y la compilación Windows.
 
 Referencia normativa: https://www.boe.es/eli/es/rd/2009/10/30/1631
+
+## Apoya el mantenimiento de EvalúaFP
+
+**EvalúaFP sigue siendo gratuita y las aportaciones no son obligatorias.** Si el proyecto te resulta útil, puedes contribuir voluntariamente a su mantenimiento, documentación y nuevas funciones mediante PayPal:
+
+**[Realizar una aportación voluntaria con PayPal](https://www.paypal.com/donate/?hosted_button_id=VX6XGDBJS39W6)**
+
+El pago se gestiona fuera de la aplicación, directamente en PayPal. No se requiere aportar para descargar, instalar o utilizar EvalúaFP; los proveedores externos de IA pueden tener costes de API independientes. Las aportaciones están sujetas a las condiciones de PayPal y las obligaciones fiscales aplicables; no se presentan como donativos con deducción fiscal.
