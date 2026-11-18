@@ -978,7 +978,7 @@ def run_desktop_window(url):
         else:
             raise RuntimeError('Sistema operativo de escritorio no soportado.')
     except Exception as exc:
-        raise RuntimeError(f'No se ha podido abrir la ventana de EvalúaFP en {sys.platform}: {exc}') from exc
+        raise RuntimeError(f'No se ha podido abrir la ventana de EvalúaFP. {"Microsoft Edge WebView2 Runtime" if sys.platform == "win32" else "Motor gráfico " + sys.platform}: {exc}') from exc
 
 def main():
     server, url = start()
