@@ -31,7 +31,7 @@ Se ha creado una **landing estática y adaptable a móviles**, distribuida con e
 
 Para alojarla en **GitHub Pages**, copie los archivos de la carpeta de landing del ZIP a `docs/` en el repositorio y active **Settings → Pages → Deploy from a branch → main /docs**. No se debe anunciar la URL pública hasta comprobar que Pages esté habilitado. La aplicación es gratuita, aunque **las API externas de IA pueden cobrar por su uso**. El repositorio ofrece código fuente; el EXE e instalador de Windows necesitan compilación y pruebas independientes.
 
-La actualización preparada incorpora **71 pruebas automatizadas superadas**. La compilación del EXE en Windows y el despliegue de la landing siguen pendientes de verificación.
+La actualización preparada incorpora **72 pruebas automatizadas superadas**. La compilación del EXE en Windows y el despliegue de la landing siguen pendientes de verificación.
 
 ---
 
