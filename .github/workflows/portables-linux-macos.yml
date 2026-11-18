@@ -1,0 +1,60 @@
+name: Compilar portables Linux y macOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/portables-linux-macos.yml'
+      - 'app.py'
+      - 'requirements*.txt'
+      - 'scripts/build_portable_unix.py'
+      - 'storage_config.py'
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            os: ubuntu-22.04
+            artifact: evaluafp-linux-x64
+          - name: macOS Intel
+            os: macos-15-intel
+            artifact: evaluafp-macos-intel
+          - name: macOS Apple Silicon
+            os: macos-15
+            artifact: evaluafp-macos-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: Instalar bibliotecas Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libopengl0 libegl1 libxkbcommon-x11-0 libxcb-cursor0 libnss3 libxcomposite1 libxdamage1 libxrandr2
+      - name: Instalar herramientas de compilación
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+      - name: Compilar, verificar y empaquetar
+        run: python scripts/build_portable_unix.py --test
+      - name: Publicar paquetes portátiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            dist/EvaluaFP_Portatil_*.tar.gz
+            dist/EvaluaFP_Portatil_*.zip
+          if-no-files-found: error
+          retention-days: 30
