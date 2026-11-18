@@ -16,7 +16,7 @@ def _criterion_is_grounded(source_text,description,ra_number,letter):
         at=text.find(desc,offset)
         if at<0:return False
         before=text[max(0,at-100):at].rstrip()
-        marker=(rf'(?:ra\s*{ra_number}\s*[.:\-]?\s*)?{letter}\s*[).:\-]\s*$'
+        marker=(rf'(?:ra\s*{ra_number}\s*[.:\-]?\s*)?{letter}\s*[).:\-]\s*\|?\s*$'
                 rf'|ra\s*{ra_number}\s*[.:\-]?\s*{letter}\s*$')
         if re.search(marker,before,re.IGNORECASE):return True
         offset=at+len(desc)
@@ -40,6 +40,14 @@ DOCUMENTO:\n{program_text}"""
         raise ValueError('La IA no devolvió una lista válida de RA/CE; revise la programación.')
     source=_source_normalize(program_text)
     observed=set(re.findall(r'(?<![a-z0-9])ra\s*([1-9]\d?)(?!\d)',source,re.I))
+    # El currículo oficial puede numerar resultados como «1. ...», sin prefijo RA.
+    heading=re.search(r'(?i)resultados de aprendizaje y criterios de evaluaci[oó]n',program_text)
+    if heading:
+        block=program_text[heading.end():]
+        block=re.split(r'(?im)^\s*(?:duraci[oó]n\s*:|m[oó]dulo profesional\s*:)',block,maxsplit=1)[0]
+        for num,description in re.findall(r'(?m)^\s*([1-9]\d?)\.\s+([^\n]{25,})',block):
+            observed.add(num)
+
     warnings=[str(w) for w in result.get('warnings',[]) if isinstance(w,str)][:30]
     if 'técnica contable' in source and re.search(r'(?:código(?: del módulo)?|c[oó]digo)\s*[:|]?\s*0299\b',source,re.I):
         warnings.append('Código curricular por revisar: el documento asigna 0299 a Técnica Contable; el módulo del título de Gestión Administrativa figura como 0441 en el RD 1631/2009. Compruébelo con la normativa aplicable.')
