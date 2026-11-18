@@ -63,29 +63,25 @@ def extract_program(path):
             return '\n'.join(page.get_text('text') for page in doc)
     if suffix == '.docx':
         from docx import Document
-        doc = Document(str(path))
-        parts = [p.text for p in doc.paragraphs]
-        for table in doc.tables:
-            for row in table.rows:
-                parts.append(' | '.join(cell.text for cell in row.cells))
+        from docx.text.paragraph import Paragraph
+        from docx.table import Table
+        doc=Document(str(path))
+        # Respeta el orden real de párrafos y tablas, donde a menudo figuran los CE.
+        parts=[]
+        for block in doc.iter_inner_content():
+            if isinstance(block,Paragraph):
+                if block.text.strip():parts.append(block.text)
+            elif isinstance(block,Table):
+                for row in block.rows:
+                    value=' | '.join(cell.text.strip() for cell in row.cells)
+                    if value.strip(' |'):parts.append(value)
         return '\n'.join(parts)
     return path.read_text(encoding='utf-8-sig', errors='replace')
 
 
 def analyze_program(program_text):
-    if not program_text.strip():
-        raise ValueError('El archivo no contiene texto extraíble; convierta un escaneo a texto antes de analizarlo.')
-    # Límite explícito para no dar una falsa impresión de análisis integral.
-    if len(program_text) > 110000:
-        raise ValueError('Programación extensa. Divídala en documentos de hasta 110.000 caracteres para no omitir criterios.')
-    prompt = f'''Extrae los resultados de aprendizaje (RA), criterios de evaluación (CE) y ponderaciones de esta programación didáctica de FP.
-JSON OBLIGATORIO: {{"outcomes":[{{"code":"RA1","description":"...","weight":null,"criteria":[{{"code":"RA1.a","description":"...","weight":null}}]}}],"warnings":["..."]}}.
-Las ponderaciones son números de 0 a 100; RA.weight es el porcentaje del RA sobre la calificación del módulo; CE.weight es el porcentaje de ese CE dentro de su RA. Si la programación especifica otra unidad, conviértela SOLO cuando sea matemáticamente inequívoco. Si no se especifica una ponderación explícita, usa null: PROHIBIDO inventarla, inferirla o repartir por igual.
-No inventes RA ni CE. Incluye advertencias si hay ambigüedad, si las ponderaciones no suman 100 o si el texto parece incompleto. Mantén códigos y descripciones fieles. TEXTO:\n{program_text}'''
-    result,model = ia.chat('analysis', prompt)
-    if not isinstance(result.get('outcomes'), list):
-        raise ValueError('No se han reconocido RA y CE: revise la programación manualmente.')
-    return {'outcomes':result['outcomes'], 'warnings':result.get('warnings',[]), 'model':model}
+    import curriculum_guard
+    return curriculum_guard.analyze_program(program_text)
 
 
 def allocate_slots(criteria, count, kind, total, problem_count=0):
@@ -152,20 +148,25 @@ En preguntas test usa exactamente cuatro opciones, una sola correcta (A/B/C/D) y
 TÍTULO: {title}\nINDICACIONES ADICIONALES: {additional[:5000]}\nPLAN DE PREGUNTAS: {json.dumps(slots,ensure_ascii=False)}'''
     # Si existen materiales activos, no se permite generar basándose solo en el CE.
     if sources:
-        material_sections=[]
+        # Un pasaje se envía una vez por lote; se indican las preguntas autorizadas.
+        allowed=[];unique_passages={}
         for slot in slots:
-            chunks=sources.get(slot['number'], [])
+            chunks=sources.get(slot['number'],[])
             if not chunks:raise ValueError('No se han recuperado pasajes del material para una pregunta.')
-            content='\n'.join(f'PASO ID {x["id"]} | {x["filename"]} | {x["location_kind"]} {x["location_number"]}\n{x["body"]}' for x in chunks)
-            material_sections.append(f'PREGUNTA {slot["number"]} (CE {slot["criterion_code"]}):\n{content}')
+            for chunk in chunks:
+                unique_passages[chunk['id']]=chunk
+            allowed.append(f'PREGUNTA {slot["number"]} (CE {slot["criterion_code"]}): pasajes permitidos '
+                           +', '.join(str(x['id']) for x in chunks))
+        passages='\n'.join(f'PASO ID {x["id"]} | {x["filename"]} | {x["location_kind"]} {x["location_number"]}\n{x["body"]}'
+                           for x in unique_passages.values())
         prompt += ('\nRESTRICCIÓN OBLIGATORIA: existe material didáctico asociado. Genera cada pregunta'
-                   ' y su respuesta modelo EXCLUSIVAMENTE desde los pasajes de su propia pregunta.'
-                   ' El criterio de evaluación establece qué evaluar, pero no autoriza añadir contenido externo.'
-                   ' Para CADA pregunta agrega: "source":{"passage_id":ID_NUMÉRICO,'
-                   '"evidence":"fragmento literal de al menos 12 caracteres incluido exactamente en el pasaje"}.'
-                   ' Si no hay información suficiente para formular una pregunta, no inventes ni uses conocimientos generales;'
-                   ' devuelve {"error":"contenido insuficiente"}.\nPASAJES PERMITIDOS:\n'
-                   + '\n\n'.join(material_sections))
+                   ' y su respuesta modelo EXCLUSIVAMENTE desde los pasajes autorizados para esa pregunta.'
+                   ' El CE establece qué evaluar, no autoriza añadir contenido externo.'
+                   ' Para CADA pregunta agrega "source":{"passage_id":ID_NUMÉRICO,'
+                   '"evidence":"fragmento literal de al menos 12 caracteres incluido en el pasaje"}.'
+                   ' Si es insuficiente devuelve {"error":"contenido insuficiente"}.'
+                   '\nASIGNACIONES POR PREGUNTA:\n'+'\n'.join(allowed)
+                   +'\nPASAJES PERMITIDOS:\n'+passages)
     if forbidden_questions:
         prompt += ('\nPREGUNTAS YA UTILIZADAS: no repitas, parafrasees ni plantees la misma cuestión.\n' +
                    '\n'.join('- '+str(x)[:260] for x in forbidden_questions[-65:]))
@@ -223,78 +224,10 @@ def is_repeated_question(text, previous):
     return False
 
 
-def build_exam_models(title, kind, total, slots, model_count=1, difficulty='medio', additional='', sources=None):
-    """Banco >= 3 * preguntas solicitadas; variantes con preguntas disjuntas.
+def build_exam_models(title, kind, total, slots, model_count=1, difficulty='medio', additional='', sources=None, progress=None):
+    import exam_batch
+    return exam_batch.build_exam_models(title,kind,total,slots,model_count,difficulty,additional,sources,progress)
 
-    Ponderaciones, cantidad por CE, puntos y tipo se copian de los slots originales.
-    El banco sobrante se devuelve completo para persistirlo y auditar su generación.
-    """
-    if not isinstance(model_count,int) or isinstance(model_count,bool) or not 1 <= model_count <= 6:
-        raise ValueError('Elija entre 1 y 6 modelos distintos.')
-    if difficulty not in ('bajo','medio','alto'):
-        raise ValueError('Dificultad no válida.')
-    if not slots:raise ValueError('No hay preguntas para generar.')
-    # Agrupación ordenada por CE y tipo; no mezcla preguntas de diferentes criterios.
-    buckets=OrderedDict()
-    for slot in slots:
-        buckets.setdefault((slot['criterion_id'],slot['kind']),[]).append(slot)
-    all_questions=[]
-    previous_fps=[]
-    previous_prompts=[]
-    model_name=None
-    per_bucket={}
-    for key,templates in buckets.items():
-        # El banco tiene al menos el triple del examen. Si se solicitan más
-        # de tres variantes, crece para que tampoco se repitan entre ellas.
-        target=len(templates)*max(3,model_count)
-        found=[]
-        failures=0
-        while len(found)<target:
-            required=min(10,target-len(found))
-            batch=[];batch_sources={}
-            for idx in range(required):
-                template=templates[(len(found)+idx)%len(templates)]
-                slot={**template,'number':idx+1}
-                batch.append(slot)
-                if sources:
-                    batch_sources[idx+1]=sources.get(template['number'],[])
-            try:
-                questions,model=generate_exam(title,kind,total,batch,additional,
-                     batch_sources if sources else None,difficulty,previous_prompts)
-            except ValueError:
-                failures+=1
-                if failures>=4:raise
-                continue
-            model_name=model
-            accepted=0
-            for q in questions:
-                if is_repeated_question(q['prompt'],previous_fps):continue
-                previous_fps.append(question_fingerprint(q['prompt']))
-                previous_prompts.append(q['prompt'])
-                found.append(q)
-                accepted+=1
-            failures=0 if accepted else failures+1
-            if failures>=4:
-                raise ValueError('La IA repite preguntas y no es posible completar un banco sin duplicados. No se ha guardado ningún examen.')
-        per_bucket[key]=found
-        all_questions.extend(found)
-    models=[]
-    for n in range(model_count):
-        chosen=[]
-        # Asignación sin reemplazo: los modelos nunca comparten una pregunta del banco.
-        for key,templates in buckets.items():
-            chosen.extend((key, q) for q in per_bucket[key][n*len(templates):(n+1)*len(templates)])
-        cursor={key:0 for key in buckets}
-        model_questions=[]
-        for number,template in enumerate(slots,1):
-            key=(template['criterion_id'],template['kind'])
-            i=cursor[key];cursor[key]+=1
-            question=per_bucket[key][n*len(buckets[key])+i]
-            model_questions.append({**question,**template,'number':number})
-        models.append(model_questions)
-    assert len(all_questions)>=3*len(slots)
-    assert len({question_fingerprint(q['prompt']) for q in all_questions}) == len(all_questions)
-    return models,all_questions,model_name
 
 def folder_for(exam, student, module):
     return dbm.STORAGE / dbm.slug(module['academic_year']) / f"{dbm.slug(module['name'])}_{module['id']}" / f"{dbm.slug(exam['title'])}_{exam['id']}" / f"{dbm.slug(student['code'])}_{student['id']}"
