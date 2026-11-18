@@ -30,7 +30,7 @@ import storage_config
 import evaluacion
 import exportaciones
 
-APP_VERSION = "1.0.3"
+APP_VERSION = "1.0.4"
 TOKEN = secrets.token_urlsafe(32)
 WEB = (Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'web')
 
@@ -363,7 +363,7 @@ def register_students(db, module_id, incoming):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='EvaluaFP/1.0.3'
+    server_version='EvaluaFP/1.0.4'
     def log_message(self,format,*args):
         # No vuelca tokens, claves ni datos de alumnado en stdout.
         return
