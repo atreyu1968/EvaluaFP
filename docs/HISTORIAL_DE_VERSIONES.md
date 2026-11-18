@@ -1,3 +1,10 @@
+## 1.0.4 — Rendimiento y extracción curricular verificable
+
+- Generación multcriterio, menos solicitudes a la IA, pasajes sin repeticiones.
+- RA y CE vinculados a texto literal, control de cobertura y descartes.
+- DOCX en orden de párrafos y tablas, indicadores de tiempo sin porcentajes simulados.
+- Avisos de código, RA204 y ponderaciones inconsistentes para Técnica Contable.
+
 ## 1.0.3 — Corrección de nombres UTF-8 en subida de documentos
 
 - Arreglado el fallo de `email.header.Header` en `multipart/form-data` con nombres acentuados.
