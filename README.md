@@ -1,5 +1,40 @@
 # EvalúaFP Local
 
+## Novedades del paquete 1.0.6 — Ponderación curricular y landing
+
+> **Estado de publicación:** la nueva versión 1.0.6 se ha preparado y comprobado en el paquete fuente entregado aparte. La rama principal puede contener todavía la versión anterior hasta que se sincronicen los nuevos archivos. No debe confundirse la documentación de novedades con una publicación de binarios verificados.
+
+### Ponderaciones por defecto de RA y CE
+
+Cuando una programación **no fija otros porcentajes**, todos los criterios de evaluación se ponderan por igual en el conjunto del módulo y cada RA obtiene un porcentaje proporcional al número de CE que contiene:
+
+- **CE (peso global):** `100 ÷ número total de CE`.
+- **RA:** `100 × número de CE de ese RA ÷ número total de CE`.
+- **CE dentro de su RA:** `100 ÷ número de CE de ese RA`.
+
+Por ejemplo, con tres CE en RA1 y cinco en RA2, el módulo tendrá ocho CE al **12,50 %** cada uno. RA1 pesará **37,50 %** y RA2 **62,50 %**.
+
+La versión preparada registra la procedencia de cada porcentaje (`default`, `programming` y `manual`), conserva los pesos explícitos o editados por el docente, recalcula solo los automáticos al añadir CE y distribuye los porcentajes residuales cuando se han indicado únicamente algunos pesos. **No corrige silenciosamente sumas superiores al 100 %**, ni deduce el porcentaje de formación en empresa. Un RA sin CE permanece pendiente.
+
+### Generación, corrección y evaluación (novedades anteriores)
+
+- **Examen manual:** análisis de cada pregunta para proponer uno o varios RA/CE, con justificación y distribución de puntos; el docente confirma antes de guardar.
+- **Consulta curricular:** recuperación de RA/CE desde el BOE cuando falten o haya dudas, con identificación de fuente y revisión humana.
+- **Exámenes generados:** test, desarrollo y problemas, dificultad baja/media/alta, modelos A–F, banco mínimo triple y PDF por modelo, con solucionarios separados.
+- **Manuscritos:** PDF/fotografías multipágina, carga múltiple, visor de originales, detección de respuestas continuadas y corrección asistida con rúbricas.
+- **Evaluación:** resultados por CE, RA, unidad y trimestre; notas manuales o CSV, cierres docentes y exportaciones Excel/Additio por RA/CE, no por prueba.
+- **Almacenamiento:** SQLite y documentos locales, modo USB y clave API cifrada con contraseña maestra.
+
+### Landing gratuita y capturas de pantalla
+
+Se ha creado una **landing estática y adaptable a móviles**, distribuida con el paquete 1.0.6. Utiliza capturas **de la interfaz real** sobre datos exclusivamente ficticios y explica el funcionamiento, las limitaciones, la exportación y las reglas automáticas de ponderación. Incluye un simulador de pesos y un recorrido por las capturas.
+
+Para alojarla en **GitHub Pages**, copie los archivos de la carpeta de landing del ZIP a `docs/` en el repositorio y active **Settings → Pages → Deploy from a branch → main /docs**. No se debe anunciar la URL pública hasta comprobar que Pages esté habilitado. La aplicación es gratuita, aunque **las API externas de IA pueden cobrar por su uso**. El repositorio ofrece código fuente; el EXE e instalador de Windows necesitan compilación y pruebas independientes.
+
+La actualización preparada incorpora **71 pruebas automatizadas superadas**. La compilación del EXE en Windows y el despliegue de la landing siguen pendientes de verificación.
+
+---
+
 **Aplicación local para la creación, corrección asistida y evaluación de instrumentos de Formación Profesional, organizada por resultados de aprendizaje (RA) y criterios de evaluación (CE).**
 
 **Versión del código:** 1.0.4 · **Desarrollador:** Francisco Javier González Rolo · **Sistema principal:** Windows 10/11 (x64) · **Base de datos:** SQLite · **Interfaz:** HTML/CSS/JavaScript con ventana WebView2.
