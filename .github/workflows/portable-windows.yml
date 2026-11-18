@@ -46,7 +46,16 @@ jobs:
           Copy-Item dist/EvaluaFP_Portatil.exe "$root/EvaluaFP_Portatil.exe"
           Copy-Item ejemplos/EvaluaFP.portable.json "$root/EvaluaFP.portable.json"
           & "$root/EvaluaFP_Portatil.exe" --selftest
-          if ($LASTEXITCODE -ne 0) { throw 'No se ha superado la prueba de arranque del EXE.' }
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Código de salida del selftest: $LASTEXITCODE"
+            Get-ChildItem -Path "$root/EvaluaFP_Datos" -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+              if ($_.Name -in @('errores_inicio.log','registro_aplicacion.log')) {
+                Write-Host "DIAGNÓSTICO: $($_.FullName)"
+                Get-Content -Path $_.FullName -ErrorAction SilentlyContinue
+              }
+            }
+            throw 'No se ha superado la prueba de arranque del EXE.'
+          }
           Compress-Archive -Path "$root/*" -DestinationPath "dist/EvaluaFP_Portatil_${ver}_windows_x64.zip" -CompressionLevel Optimal -Force
       - name: Publicar paquete Windows
         uses: actions/upload-artifact@v4
