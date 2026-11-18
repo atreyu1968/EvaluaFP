@@ -13,14 +13,32 @@ import sqlite3
 import sys
 from pathlib import Path
 
-APP_HOME = Path(sys.executable if getattr(sys, 'frozen', False) else __file__).resolve().parent
+def _application_home():
+    """Sitúa datos externos junto al paquete, también en macOS .app."""
+    explicit = os.environ.get('EVALUAFP_PORTABLE_HOME')
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    if not getattr(sys, 'frozen', False):
+        return Path(__file__).resolve().parent
+    exe = Path(sys.executable).resolve()
+    if sys.platform == 'darwin':
+        for parent in exe.parents:
+            if parent.suffix.lower() == '.app':
+                return parent.parent
+    return exe.parent
+
+
+APP_HOME = _application_home()
 PORTABLE_FILE = APP_HOME / 'EvaluaFP.portable.json'
-LOCAL_HOME = Path(os.environ.get('LOCALAPPDATA') or Path.home() / '.local' / 'share') / 'EvaluaFP'
+if sys.platform == 'darwin':
+    _default_home = Path.home() / 'Library' / 'Application Support'
+else:
+    _default_home = Path(os.environ.get('LOCALAPPDATA') or os.environ.get('XDG_DATA_HOME') or Path.home() / '.local' / 'share')
+LOCAL_HOME = _default_home / 'EvaluaFP'
 INSTALLED_FILE = LOCAL_HOME / 'ubicaciones.json'
 PORTABLE = (PORTABLE_FILE.is_file() or '--portable' in sys.argv or
             os.environ.get('EVALUAFP_PORTABLE') == '1' or
             (getattr(sys,'frozen',False) and 'portatil' in Path(sys.executable).stem.casefold()))
-
 
 def _read_json(path):
     if not path.exists():
