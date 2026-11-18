@@ -2,7 +2,7 @@
 
 **Aplicación local para la creación, corrección asistida y evaluación de instrumentos de Formación Profesional, organizada por resultados de aprendizaje (RA) y criterios de evaluación (CE).**
 
-**Versión del código:** 1.0.2 · **Desarrollador:** Francisco Javier González Rolo · **Sistema principal:** Windows 10/11 (x64) · **Base de datos:** SQLite · **Interfaz:** HTML/CSS/JavaScript con ventana WebView2.
+**Versión del código:** 1.0.3 · **Desarrollador:** Francisco Javier González Rolo · **Sistema principal:** Windows 10/11 (x64) · **Base de datos:** SQLite · **Interfaz:** HTML/CSS/JavaScript con ventana WebView2.
 
 > **Estado:** proyecto en desarrollo. La ejecución automatizada de 43 pruebas ha concluido correctamente en el entorno de desarrollo; la compilación, la ventana gráfica y el instalador deben verificarse en Windows antes de distribuir la aplicación. La calificación definitiva requiere validación docente.
 
@@ -112,3 +112,18 @@ No se garantiza una sincronización automática con Additio. Verifica el asisten
 ## Autoría y derechos
 
 **Desarrollador: Francisco Javier González Rolo.** El código se publica aquí para su consulta y desarrollo. No se incluye una licencia de código abierto porque no se ha establecido expresamente una; para permitir reutilización por terceros, deberá añadirse una licencia elegida por el titular. Los derechos sobre recursos didácticos, exámenes y documentos de terceros corresponden a sus respectivos titulares.
+
+
+## Corrección 1.0.3 — archivos con tildes al importar programaciones
+
+En la versión 1.0.2, la subida de archivos con nombres como
+`Programación Didáctica — Técnica Contable 2026_2027.docx`
+podía devolver `expected string or bytes-like object, got 'Header'`.
+Se ha corregido el analizador MIME de `multipart/form-data` para procesar
+encabezados y parámetros Unicode (UTF-8 y RFC 2231). Afecta a la subida de
+programaciones, materiales didácticos y exámenes. El cambio no modifica
+la estructura SQLite ni exige borrar datos; requiere recompilar el EXE.
+
+Para aplicar el parche sobre el código 1.0.2, sustituye `app.py`,
+`web/index.html` y añade `tests/test_multipart_unicode.py`. Después ejecuta
+`crear_exe_windows.bat` o `CREAR_VERSION_PENDRIVE.bat`.
