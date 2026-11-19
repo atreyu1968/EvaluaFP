@@ -1,3 +1,13 @@
+# EvalúaFP 1.2.2 beta — Historial curricular y comparación de RA/CE
+
+**Novedad:** archivo por módulo, comunidad y curso de disposiciones curriculares revisadas por el docente, con procedencia, SHA-256 y comparación de enunciados RA/CE entre versiones. Todo ello **sin sobrescribir calificaciones, ponderaciones ni los criterios que se estén utilizando**. Incluye un índice local incremental de módulos con fuentes archivadas; **no es un catálogo nacional completo ni un verificador automático de vigencia**.
+
+Consulte [los cambios](CAMBIOS_v122_BETA.md) y [las instrucciones técnicas](docs/HISTORIAL_CURRICULAR_1.2.2.md).
+
+**Instalación:** descargue las fuentes completas o aplique el parche únicamente sobre las fuentes 1.2.1; haga copia de seguridad de SQLite y de los documentos antes de recompilar el portátil. No se incluyen ejecutables ya compilados.
+
+---
+
 # EvalúaFP 1.2.1 beta — Revisión curricular RA/CE
 
 **Nueva funcionalidad integrada:** lectura local de RA/CE desde PDF, DOCX, TXT y Markdown con cita de página o párrafo, identificación por código de módulo, comparación con criterios existentes y ponderaciones iguales propuestas a dos decimales. La función **no sobrescribe notas ni RA/CE existentes**: genera una vista previa para revisión docente. Se mantienen las herramientas de programación, evaluación, FEOE y fuentes oficiales de 1.2.0.

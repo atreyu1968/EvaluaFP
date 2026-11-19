@@ -39,7 +39,7 @@ import schedule_engine
 import program_importer
 import program_assistant
 
-APP_VERSION = "1.2.1-beta"
+APP_VERSION = "1.2.2-beta"
 TOKEN = secrets.token_urlsafe(32)
 WEB = (Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'web')
 
@@ -398,7 +398,7 @@ def register_students(db, module_id, incoming):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='EvaluaFP/1.2.1-beta'
+    server_version='EvaluaFP/1.2.2-beta'
     def log_message(self,format,*args):
         # No vuelca tokens, claves ni datos de alumnado en stdout.
         return
@@ -474,6 +474,26 @@ class Handler(BaseHTTPRequestHandler):
                         stats[table]=d.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]
                     return self.send(stats)
                 if path=='/api/modules':return self.send(data.dicts(d.execute('SELECT * FROM modules ORDER BY id DESC')))
+                if path=='/api/curriculum/history':
+                    import curriculum_history
+                    mid=int((args.get('module_id') or ['0'])[0])
+                    draft=program_builder.load(d,mid)['draft']
+                    if not str(draft.get('official_module_code') or '').strip():
+                        return self.send({'versions':[],'count':0,
+                                          'notice':'Indique y guarde primero el código oficial del módulo para consultar su historial.'})
+                    return self.send(curriculum_history.list_snapshots(d,mid))
+                if path=='/api/curriculum/history-compare':
+                    import curriculum_history
+                    mid=int((args.get('module_id') or ['0'])[0])
+                    old=int((args.get('old') or ['0'])[0])
+                    new=int((args.get('new') or ['0'])[0])
+                    return self.send(curriculum_history.compare_snapshots(d,mid,old,new))
+                if path=='/api/curriculum/catalog':
+                    import curriculum_history
+                    region=(args.get('region') or [''])[0]
+                    year=(args.get('academic_year') or [''])[0]
+                    query=(args.get('q') or [''])[0]
+                    return self.send(curriculum_history.catalog(d,region,year,query))
                 if path=='/api/national/sources':
                     import national_registry
                     mid=int((args.get('module_id') or ['0'])[0])
@@ -609,7 +629,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_file(location,'application/zip',location.name)
             raise ValueError('Ruta GET desconocida.')
         if self.command!='POST':raise ValueError('Método no permitido')
-        if path in ('/api/programmings/upload','/api/materials/upload','/api/submissions/upload','/api/submissions/batch','/api/evaluation/import','/api/national/document-preview','/api/curriculum/review-preview'):
+        if path in ('/api/programmings/upload','/api/materials/upload','/api/submissions/upload','/api/submissions/batch','/api/evaluation/import','/api/national/document-preview','/api/curriculum/review-preview','/api/curriculum/history/store'):
             fields,files=multipart(self)
         else:
             body=read_json(self)
@@ -674,6 +694,18 @@ class Handler(BaseHTTPRequestHandler):
                 mid=d.execute('SELECT last_insert_rowid()').fetchone()[0]
                 data.log(d,'module_created','module',mid,{'name':name})
             return self.send({'id':mid})
+        if path=='/api/curriculum/history/store':
+            import curriculum_history
+            mid=int(fields.get('module_id','0'))
+            uploads=[(name,blob) for field,name,blob in files if field=='document']
+            if len(uploads)!=1:
+                raise ValueError('Seleccione exactamente un documento curricular oficial.')
+            with data.connect() as d:
+                result=curriculum_history.store_document(d,mid,uploads[0][0],uploads[0][1],
+                    str(fields.get('module_code','')).strip(),
+                    fields.get('document_kind',''),fields.get('source_url',''),
+                    fields.get('source_title',''),fields.get('teacher_confirmed')=='true')
+            return self.send(result)
         if path=='/api/curriculum/review-preview':
             # Vista previa no destructiva y sin IA: no guarda el documento ni
             # cambia RA/CE, pesos, notas, exámenes o programaciones existentes.

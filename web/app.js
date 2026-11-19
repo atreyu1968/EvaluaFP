@@ -3,6 +3,7 @@ const S = {page:'inicio', modules:[], moduleId:null, moduleDetails:null, exams:[
   examModuleId:null, examDetails:null, submissions:[], subId:null, subDetails:null,
   uploadExamId:null, uploadStudentId:null, queue:[], pageIndex:0, proposal:null, aiSettings:null, busy:false, manualDraft:null};
 S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.nationalDocumentPreview=null;
+S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.curriculumSourceFile=null;S.curriculumSourceKind='';
 S.curriculumReview=null;S.feoeMinimumPreview=null;S.aiPreview=null;S.unitProposal=null;S.autoProposedModuleId=null;S.importPreview=null;S.preparePath=null;S.prepareStep=0;S.wizardDraft=null;S.prepareInfo=null;S.advanced=false;S.creatingModule=false;
 const E = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const V = v=>v==null?'No indicada':String(v)+' %';
@@ -279,6 +280,8 @@ function nationalSourcesPanel(){
 function curriculumReviewPanel(){
  const info=S.prepareInfo||{},module=info.module||{},draft=S.wizardDraft||info.draft||{};
  const report=S.curriculumReview;
+ const history=S.curriculumHistory;
+ const diff=S.curriculumHistoryDiff;
  return `<section class="guide-calendar-summary"><h3>Extracción contrastable de RA y CE (sin IA)</h3>
  <p class="small">Selecciona una programación o un currículo oficial con el <b>nombre y código del módulo</b> y sus RA/CE completos. Se presenta una vista previa con páginas o párrafos; no se cambia ninguna calificación ni ponderación.</p>
  <form id="curriculum-review-form" class="formgrid">
@@ -298,7 +301,21 @@ function curriculumReviewPanel(){
  ${(report.default_weight_proposal||[]).flatMap(ra=>ra.criteria.map(ce=>`<tr><td>${E(ra.code)}</td><td>${E(ra.module_weight_pct)} %</td><td>${E(ce.code)}</td><td>${E(ce.module_weight_pct)} %</td></tr>`)).join('')}
  </tbody></table></div></details>
  ${report.existing_ra_count?'<p class="hint warning">Existen criterios previamente registrados: solo se ofrece comparación; nunca se sustituyen automáticamente.</p>':'<p class="small">Esta vista previa no guarda RA/CE. Tras revisarlos, puede incorporarlos mediante los controles curriculares existentes.</p>'}
+ ${report.document_kind==='norma_oficial'?`<div class="guide-calendar-details"><h4>Conservar una versión de esta disposición para futuras comparaciones</h4>
+ <p class="small">Se conservará el texto de RA/CE extraído, la fuente y la huella SHA-256, no el PDF original. No se aprobarán ni sustituirán criterios ni calificaciones.</p>
+ <div class="formgrid"><div class="field"><label>Enlace público HTTPS a la disposición</label><input type="url" id="curriculum-version-url" maxlength="800" value="${E(draft.curriculum_source_url||'')}" placeholder="https://www.boe.es/..."></div>
+ <div class="field"><label>Título, fecha y versión de la disposición</label><input id="curriculum-version-title" maxlength="700" value="${E(draft.curriculum_source_description||'')}" placeholder="Real Decreto / Orden / modificación"></div></div>
+ <label class="guide-confirm"><input id="curriculum-version-confirm" type="checkbox"> He comprobado que este documento corresponde a mi territorio, curso y módulo y deseo archivarlo para comparar versiones.</label>
+ <button type="button" class="btn secondary" data-action="curriculum-history-save">Archivar esta versión de RA/CE sin modificar el currículo</button></div>`:''}
  </div>`:''}
+ <div class="guide-calendar-details"><h4>Historial de fuentes curriculares del módulo</h4>
+ <p class="small">Las versiones se guardan por módulo, comunidad y curso. Son referencias aportadas y revisadas por docentes; ninguna se considera vigente automáticamente.</p>
+ ${history?.versions?.length?`<div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Registro</th><th>Disposición / fuente</th><th>RA / CE</th><th>Comparar</th></tr></thead><tbody>${history.versions.map((v,i)=>`<tr><td>#${Number(v.id)} · ${E(v.recorded_at)}</td><td><a href="${E(v.source_url)}" rel="noopener noreferrer" target="_blank">${E(v.source_title)}</a><div class="small">${E(v.document)}</div></td><td>${v.ra} / ${v.ce}</td><td>${i<history.versions.length-1?`<button class="btn mutedbtn smallbtn" type="button" data-action="curriculum-history-compare" data-old="${history.versions[i+1].id}" data-new="${v.id}">Comparar con anterior</button>`:'Primera versión'}</td></tr>`).join('')}</tbody></table></div>`:'<p class="small">Aún no hay versiones archivadas para este módulo y curso. Introduce y guarda el código oficial para empezar.</p>'}
+ ${diff?`<div class="guide-review-line"><h4>Cambios entre #${Number(diff.old?.id)} y #${Number(diff.new?.id)}</h4>
+ <p>${diff.differences?.length?Object.entries(diff.counts||{}).map(([k,v])=>`${E(k)}: ${v}`).join(' · '):'Los RA/CE extraídos no han cambiado.'}</p>
+ ${diff.differences?.length?`<div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Código</th><th>Tipo de cambio</th><th>Texto anterior</th><th>Texto nuevo</th></tr></thead><tbody>${diff.differences.map(x=>`<tr><td>${E(x.code)}</td><td>${E(x.state)}</td><td>${E(x.old)}</td><td>${E(x.new)}</td></tr>`).join('')}</tbody></table></div>`:''}
+ <p class="small">${E(diff.notice||'')}</p></div>`:''}
+ </div>
  </section>`;
 }
 
@@ -650,6 +667,8 @@ async function viewPrepare(){
  <div class="field"><label>Grupo (opcional)</label><input name="group_name" placeholder="1.º A"></div>
  <button class="btn" type="submit">Crear módulo y continuar</button></form></section>`;return;}
  const info=await API('/api/programming-builder/'+Number(S.moduleId));S.prepareInfo=info;
+ if(info.draft?.official_module_code){S.curriculumHistory=await API('/api/curriculum/history?module_id='+Number(S.moduleId));}
+ else {S.curriculumHistory={versions:[],count:0};S.curriculumHistoryDiff=null;}
  if(S.preparePath==='create'&&[1,4].includes(S.prepareStep)){
    S.nationalSources=await API('/api/national/sources?module_id='+Number(S.moduleId));
  }
@@ -1153,7 +1172,7 @@ async function doSubmit(form){
    const formData=new FormData(form);
    const result=await busy(()=>API('/api/curriculum/review-preview','POST',formData),
      'Vista previa curricular creada. Revisa enunciados, procedencia y diferencias.');
-   if(result){S.curriculumReview=result;await page('preparar');}
+   if(result){S.curriculumReview=result;S.curriculumSourceFile=form.querySelector('[name=document]')?.files?.[0]||null;S.curriculumSourceKind=formData.get('document_kind');await page('preparar');}
    return;
  }
  if(id==='guided-upload'){
@@ -1363,7 +1382,7 @@ document.addEventListener('change',async event=>{
      toast('Territorio cambiado: se han reiniciado las horas y los datos del calendario anterior.');
    }return;
  }
-  if(el.id==='prepare-module'){S.curriculumReview=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
+  if(el.id==='prepare-module'){S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
  if(el.id==='module-select'){S.moduleId=el.value;S.proposal=null;await page('programaciones');}
  if(el.id==='evaluation-module'){S.evaluationModuleId=Number(el.value);S.evalInstrumentId=null;await page('evaluacion');}
  if(el.id==='eval-instrument-select'){S.evalInstrumentId=Number(el.value);renderEvalScores();}
@@ -1391,6 +1410,23 @@ document.addEventListener('click',async event=>{
  if(event.target.id==='large-page'){event.target.classList.toggle('zoom');return;}
  const el=event.target.closest('[data-action]');if(!el)return;
  const action=el.dataset.action;const id=Number(el.dataset.id);const index=Number(el.dataset.index);
+ if(action==='curriculum-history-save'){
+   if(!S.curriculumSourceFile||!S.curriculumReview){toast('Vuelve a seleccionar y previsualizar el documento original.',true);return;}
+   if(S.curriculumSourceKind!=='norma_oficial'){toast('El historial normativo solo admite disposiciones oficiales.',true);return;}
+   if(!$('#curriculum-version-confirm')?.checked){toast('Confirma la revisión de la fuente y su ámbito antes de archivarla.',true);return;}
+   const f=new FormData();f.append('module_id',String(S.moduleId));
+   f.append('module_code',String(S.curriculumReview.module_code));f.append('document_kind','norma_oficial');
+   f.append('source_url',$('#curriculum-version-url')?.value||'');f.append('source_title',$('#curriculum-version-title')?.value||'');
+   f.append('teacher_confirmed','true');f.append('document',S.curriculumSourceFile);
+   const result=await busy(()=>API('/api/curriculum/history/store','POST',f),'Fuente curricular archivada, sin alterar RA ni CE.');
+   if(result){S.curriculumHistoryDiff=result.change||null;await page('preparar');}
+   return;
+ }
+ if(action==='curriculum-history-compare'){
+   const old=Number(el.dataset.old),newer=Number(el.dataset.new);
+   const result=await busy(()=>API('/api/curriculum/history-compare?module_id='+Number(S.moduleId)+'&old='+old+'&new='+newer));
+   if(result){S.curriculumHistoryDiff=result;await page('preparar');}return;
+ }
  if(action==='national-boe-search'){
    collectWizardFields();
    const m=S.prepareInfo?.module;

@@ -142,6 +142,9 @@ def init():
         # Biblioteca local territorial/curso con procedencia docente explícita.
         import national_registry
         national_registry.migrate(d)
+        # Historial opt-in de versiones de fuentes curriculares (no altera notas).
+        import curriculum_history
+        curriculum_history.migrate(d)
         # 1.1: borradores de programación didáctica, sin alterar documentos ni calificaciones.
         import program_builder
         program_builder.migrate(d)
