@@ -33,3 +33,7 @@ Se ha integrado en la aplicación el módulo `curriculum_review.py`, anteriormen
 ## Seguridad y publicación
 
 Los textos y documentos curriculares no se envían a servicios externos en esta función. Se procesan en una carpeta temporal, se descartan después de generar la vista previa y no se incluyen en GitHub. No publique bases de datos SQLite, claves API ni documentación personal del alumnado. La fuente normativa, el curso y la comunidad deben verificarse siempre por el docente.
+
+### Corrección de pruebas multiplataforma
+
+Las pruebas de rutas portátiles comparan rutas canónicas resueltas para admitir en Windows los alias de nombre corto 8.3 (`RUNNER~1`) frente a su ruta larga, sin modificar la ubicación efectiva ni los datos de los usuarios. Esta corrección se comprobó tras detectar fallos en GitHub Actions de Windows.

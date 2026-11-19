@@ -25,8 +25,8 @@ class Version100Tests(unittest.TestCase):
             marker.write_text(json.dumps({'data_dir':'Datos_FP','backup_dir':'Seguridad_Copias'}),encoding='utf-8')
             with patch.object(storage_config,'APP_HOME',home),patch.object(storage_config,'PORTABLE',True),patch.object(storage_config,'PORTABLE_FILE',marker),patch.dict(os.environ,{'EVALUAFP_DATA_DIR':''}):
                 datadir,backups=storage_config._configured_folders()
-                self.assertEqual(datadir,home/'Datos_FP')
-                self.assertEqual(backups,home/'Seguridad_Copias')
+                self.assertEqual(datadir.resolve(),(home/'Datos_FP').resolve())
+                self.assertEqual(backups.resolve(),(home/'Seguridad_Copias').resolve())
                 self.assertEqual(storage_config.resolve_folder('Datos_FP'),datadir)
                 self.assertRaisesRegex(ValueError,'misma unidad|subcarpeta',storage_config.resolve_folder,'.')
 
@@ -71,7 +71,7 @@ class Version100Tests(unittest.TestCase):
             self.assertEqual((dst/'almacen'/'doc.pdf').read_bytes(),b'ORIGINAL PDF')
             self.assertTrue((newbacks/'copia.zip').exists())
             with closing(sqlite3.connect(dst/'datos'/'evaluafp.sqlite3')) as d:
-                self.assertEqual(d.execute('SELECT local_path FROM programmings').fetchone()[0],str(dst/'almacen'/'doc.pdf'))
+                self.assertEqual(Path(d.execute('SELECT local_path FROM programmings').fetchone()[0]).resolve(),(dst/'almacen'/'doc.pdf').resolve())
             self.assertEqual(json.loads(marker.read_text(encoding='utf-8'))['data_dir'],'destino')
 
     def test_sqlite_migration_closes_both_connections_on_windows(self):
