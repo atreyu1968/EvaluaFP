@@ -31,6 +31,27 @@ class HttpTests(unittest.TestCase):
         with urllib.request.urlopen(req,timeout=5) as r:
             payload=r.read()
             return json.loads(payload) if r.headers.get('Content-Type','').startswith('application/json') else payload
+    def test_feoe_minimum_standalone_document_endpoints(self):
+        m=self.req('api/modules',{'academic_year':'2026-2027','cycle':'CFGM Gestión Administrativa',
+                  'name':'Módulo demo de tareas en empresa','group_name':'A'})
+        mid=m['id']
+        r=self.req('api/outcomes',{'module_id':mid,'code':'RA1',
+                    'description':'Organiza documentación','weight':100})
+        for j in range(10):
+            self.req('api/criteria',{'outcome_id':r['id'],'code':'RA1.'+chr(97+j),
+                    'description':'Identifica datos y documentos de trabajo para comprobar registros sencillos.',
+                    'weight':10})
+        proposed=self.req(f'api/programming-builder/{mid}/feoe-minimum')
+        self.assertEqual(proposed['count'],2)
+        self.assertFalse(proposed['approved'])
+        self.assertTrue(self.req(f'api/programming-builder/{mid}/feoe-minimum.pdf').startswith(b'%PDF-'))
+        self.assertTrue(self.req(f'api/programming-builder/{mid}/feoe-minimum.docx').startswith(b'PK'))
+        accepted=self.req('api/programming-builder/feoe-minimum/accept',{'module_id':mid,
+                          'teacher_confirmed':True,'rows':proposed['rows']})
+        self.assertEqual(accepted['count'],2)
+        updated=self.req(f'api/programming-builder/{mid}/feoe-minimum')
+        self.assertEqual(updated['rows'][0]['activity'],proposed['rows'][0]['activity'])
+
     def test_generated_models_problem_persistence_and_pdf_route(self):
         m=self.req('api/modules',{'academic_year':'2026-2027','cycle':'CFGM','name':'Tesorería y compraventa','group_name':'A'})
         mid=m['id']

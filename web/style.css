@@ -46,3 +46,145 @@
 .eval-target:last-child{border-bottom:0}.eval-target label{display:flex;align-items:center;gap:7px}.eval-target input[type=number]{width:85px;padding:5px}
 .eval-score-input{width:83px;min-width:65px;padding:7px;border:1px solid #cbdce5;border-radius:7px}
 .path{overflow-wrap:anywhere;white-space:pre-wrap;background:#eff5f8;padding:12px;border-radius:8px;font-size:11px}
+
+/* EvalúaFP 1.1 — experiencia docente guiada. No modifica los controles avanzados. */
+.sidebar-advanced[hidden]{display:none!important}
+.mode-switch{margin:16px 5px 4px;border:1px solid #3e6076;background:#153853;color:#daeef7;cursor:pointer;justify-content:center}
+.mode-switch:hover{background:#205272;color:#fff}
+.welcome-card{background:linear-gradient(120deg,#113a58,#176e8d);color:#fff;border-radius:20px;padding:32px 35px;margin-bottom:22px;box-shadow:0 14px 34px #16496320}
+.welcome-kicker{font-size:11px;letter-spacing:1.8px;font-weight:850;color:#9bdfd2;margin:0 0 10px}
+.welcome-card h2{font-size:clamp(22px,2.5vw,31px);line-height:1.15;margin:0 0 11px;color:#fff;letter-spacing:-.7px}
+.welcome-card p:not(.welcome-kicker){font-size:14px;max-width:790px;color:#deedf4;margin:0}
+.welcome-module{display:inline-flex;gap:6px;align-items:center;margin-top:20px;color:#eaf5ff;padding:9px 13px;background:#ffffff19;border:1px solid #ffffff2e;border-radius:9px;font-size:13px}
+.task-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px}
+.task-card{appearance:none;display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:11px;padding:25px;border:1px solid #d9e5ea;border-radius:17px;background:#fff;color:#203f53;min-height:207px;cursor:pointer;transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease;font:inherit;box-shadow:0 6px 22px #173e6011}
+.task-card:hover,.task-card:focus-visible{transform:translateY(-2px);border-color:#49a3b5;box-shadow:0 11px 30px #18527a22;outline:none}
+.task-card strong{font-size:19px;letter-spacing:-.3px}.task-card>span:not(.task-icon):not(.task-action){color:#637b8b;line-height:1.5;max-width:380px}
+.task-icon{font-size:25px;line-height:1;width:46px;height:46px;border-radius:12px;background:#e8f5f7;color:#13687b;display:flex;align-items:center;justify-content:center}
+.task-action{font-size:12px;color:#006791;font-weight:850;margin-top:auto}
+.guide-context{display:flex;align-items:flex-end;gap:20px;justify-content:space-between;background:#fff;border:1px solid #dfebef;border-radius:13px;padding:16px 22px;margin-bottom:15px}
+.guide-context .field{min-width:220px;max-width:690px;flex:1}
+.guide-choices{display:grid;gap:14px;grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:19px}
+.guide-choice{background:#fff;min-height:205px;border:1px solid #dce7ed;border-radius:15px;padding:23px;text-align:left;display:flex;flex-direction:column;gap:12px;cursor:pointer;font:inherit;color:var(--text);box-shadow:0 5px 17px #163c5710;transition:border-color .2s ease,transform .2s ease}
+.guide-choice:hover,.guide-choice:focus-visible{border-color:#2a9ab8;transform:translateY(-2px);outline:2px solid transparent}
+.guide-choice strong{font-size:17px;line-height:1.25;color:#133e57}
+.guide-choice span{color:#667e8e;font-size:13px;line-height:1.5}
+.guide-choice b{margin-top:auto;color:#067293;font-size:12px}
+.guide-diagnosis{border:1px solid #dce7eb;border-radius:12px;background:#fff;margin:14px 0 19px;padding:17px 20px}
+.guide-diagnosis h3{margin:0 0 9px;color:#183c53;font-size:14px}
+.guide-diagnosis details{background:#fff9ec;border:1px solid #efdfbd;border-radius:9px;padding:10px 12px;margin-top:10px;color:#725f32}
+.guide-diagnosis summary{cursor:pointer;font-weight:700}
+.guide-diagnosis li{margin-bottom:6px}.guide-ok{color:#176a56;font-weight:700;font-size:13px}
+.guide-document{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:13px 2px;border-bottom:1px solid #edf2f5}
+.guide-document>span{display:grid;min-width:0;word-break:break-word;gap:3px}.guide-document small{color:#7a8f9f}
+.guide-steps{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:17px}
+.guide-step{font-size:11px;font-weight:700;color:#6c8597;border-radius:25px;border:1px solid #dbe5eb;background:#fff;padding:8px 12px}
+.guide-step.current{background:#126b8d;border-color:#126b8d;color:#fff}
+.guide-step.done{background:#eaf8f2;border-color:#bce6d6;color:#20725e}
+.guide-field{margin-bottom:16px}.guide-field label{font-size:13px;font-weight:750}.guide-field input,.guide-field textarea{font-size:14px}
+.guide-unit{background:#f9fcfe;border:1px solid #dbe7ee;border-radius:12px;padding:18px;margin:12px 0}
+.guide-unit-top{justify-content:space-between;margin-bottom:10px}
+.guide-unit details{margin-top:12px;border-top:1px solid #dfeaf1;padding-top:12px}
+.guide-unit summary{cursor:pointer;font-weight:700;font-size:12px;color:#1c5a7f}
+.guide-ce-checks{display:grid;gap:7px;margin-top:11px;max-height:230px;overflow:auto}
+.guide-ce-checks label{display:flex;align-items:start;gap:9px;background:#fff;border:1px solid #e2eaf0;border-radius:8px;padding:8px;font-size:12px}
+.guide-ce-checks input{accent-color:#1469a5;margin-top:3px}
+.guide-wizard-actions{justify-content:flex-end;border-top:1px solid #edf2f5;padding-top:14px;margin-top:24px}
+.guide-review-line{border:1px solid #dce8ee;background:#f7fbfd;padding:12px 14px;border-radius:10px;margin:12px 0;font-size:13px}
+.guide-ra{border:1px solid #cfdfea;border-radius:11px;padding:20px;margin:15px 0;background:#fbfdff}
+.guide-ra>.field>label{font-weight:800}
+.guide-ce{background:#fff;border-left:3px solid #c8e1ed;margin:13px 0 0 15px;padding:13px 16px;border-radius:6px}
+.guide-proposal .guide-ra textarea{min-height:60px}
+@media(max-width:1100px){.guide-choices{grid-template-columns:1fr}.guide-choice{min-height:145px}.guide-step{font-size:10px}}
+@media(max-width:680px){.task-grid{grid-template-columns:1fr}.welcome-card{padding:25px 19px}.task-card{min-height:165px}.guide-context{display:block}.guide-document{align-items:flex-start;flex-direction:column}.guide-ra{padding:13px}.guide-ce{margin-left:3px}.guide-step{padding:6px 9px}}
+/* Exámenes 1.1: asistente básico; las opciones avanzadas están plegadas. */
+.quick-exam .quick-criteria{display:grid;gap:11px;margin:12px 0 18px}
+.quick-exam .quick-ra{border:1px solid #d7e7ec;border-radius:11px;padding:5px 10px 10px;background:#fafdfd}
+.quick-exam .quick-ra>.checkbox-card{border:0;background:transparent;margin-bottom:2px}
+.quick-exam .quick-ra small{display:block;color:#5f8094;font-size:11px;margin-top:3px}
+.quick-exam details{margin:2px 12px 4px 38px}.quick-exam summary{cursor:pointer;color:#13688c;font-size:12px;font-weight:700}
+.quick-exam .quick-ce{display:grid;gap:4px;margin-top:9px}.quick-exam .quick-ce .checkbox-card{margin:2px 0;padding:10px;font-size:12px}
+.advanced-exam{border-radius:12px;margin-bottom:16px;background:#f4f8fa;border:1px solid #dce8ee;padding:10px 15px}
+.advanced-exam>summary{cursor:pointer;font-size:13px;font-weight:800;color:#1b6086;padding:4px}
+.advanced-exam .panel{margin:12px 0 0}
+
+/* 1.1.3 · Configuración de calendario, FEOE y Gantt */
+.guide-fieldset{margin:18px 0;padding:18px;border:1px solid #d9e5ea;border-radius:13px;background:#fff}
+.guide-fieldset legend{font-size:14px;font-weight:800;color:#174b65;padding:0 8px}
+.guide-calendar-summary{padding:17px;margin:15px 0;background:#f0f8f8;border:1px solid #cce4e4;border-radius:12px;color:#214c5e}
+.guide-calendar-summary p{font-size:12px;line-height:1.7}
+.guide-calendar-details{padding:11px 13px;margin:14px 0;background:#f5f9fb;border:1px solid #e0e9ef;border-radius:9px}
+.guide-calendar-details summary{font-weight:700;cursor:pointer;color:#176184}
+.guide-weekdays{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin:12px 0}
+.guide-weekdays label{display:grid;gap:5px;font-size:11px;color:#45667a}.guide-weekdays input{min-width:0;width:100%}
+.guide-confirm{display:flex;align-items:start;gap:9px;margin-top:12px;font-size:12px}.guide-confirm input{width:auto;margin:3px 0}
+.guide-feoe-checks{max-height:190px;overflow:auto;background:#f8fbfc;border:1px solid #dce7ed;border-radius:9px;padding:10px}
+.guide-unit{border:1px solid #e0e9ee;border-radius:11px;padding:15px;margin:12px 0;background:#fbfdfe}
+.guide-gantt-scroller{overflow-x:auto;max-width:100%;border-radius:9px;border:1px solid #d6e4e8;margin-top:13px}
+.guide-gantt{width:max-content;min-width:100%;border-collapse:collapse;font-size:9px;background:white}
+.guide-gantt th,.guide-gantt td{border:1px solid #e0e9ee;min-width:13px;height:25px;text-align:center;padding:2px}
+.guide-gantt th:first-child{position:sticky;left:0;background:#eef6f7;z-index:2;min-width:150px;max-width:180px;white-space:normal;text-align:left;padding:5px}
+.guide-gantt th span{display:block;font-weight:400;font-size:9px;color:#657c89}
+.guide-gantt thead th{font-size:8px;color:#446b80}
+.gantt-bar-term-1{background:#357ea2}.gantt-bar-term-2{background:#1b9690}.gantt-bar-term-3{background:#8173ba}.gantt-feoe{background:#78a94a}
+.guide-gantt-legend{font-size:10px;color:#60798a;margin-top:8px}
+.guide-keyfacts{display:flex;gap:8px;flex-wrap:wrap}.guide-keyfacts span{background:white;border:1px solid #d5e8e6;border-radius:8px;padding:6px 10px;font-size:12px;font-weight:700}
+.guide-term-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:13px 0}.guide-term-grid div{padding:11px;background:#fff;border:1px solid #dce8ed;border-radius:8px}.guide-term-grid small{display:block;color:#687e8c;line-height:1.45}
+@media(max-width:750px){.guide-weekdays{grid-template-columns:repeat(3,minmax(0,1fr))}.guide-term-grid{grid-template-columns:1fr}.guide-fieldset{padding:12px}}
+/* Notificaciones no deben bloquear los botones del asistente. */
+#toast,.toast{pointer-events:none}
+
+#toast{top:70px;bottom:auto;right:18px;max-width:350px;gap:6px}.toast{font-size:12px;padding:10px 13px}
+
+/* 1.1.4: Gantt con escala explícita y tablas de datos. */
+.guide-gantt th.gantt-unit-col,.guide-gantt td.gantt-unit-col{position:sticky;left:0;background:#eef6f7;z-index:2;min-width:185px;max-width:235px;white-space:normal;text-align:left;padding:6px}
+.guide-gantt th:first-child:not(.gantt-unit-col){position:static;min-width:0;max-width:none;white-space:normal;text-align:center;padding:2px}
+.guide-gantt th.gantt-month{background:#dbeef0;color:#134d68;min-width:0;text-transform:capitalize;font-size:10px;letter-spacing:.01em;border-bottom:2px solid #2c8191}
+.guide-gantt th.gantt-week{background:#f0f6f8;color:#3a5c70;min-width:47px;padding:4px 5px;white-space:nowrap;font-weight:600}
+.guide-gantt th.gantt-week span{display:block;font-size:9px;line-height:1.35}
+.guide-gantt th.gantt-week span + span{border-top:1px dotted #ccdce3;margin-top:2px;padding-top:2px}
+.guide-gantt td.gantt-data-col{white-space:nowrap;min-width:72px;padding:4px 7px;color:#17435e;font-variant-numeric:tabular-nums;font-weight:650}
+.guide-gantt .gantt-bar-term-1{background:#317fa8}.guide-gantt .gantt-bar-term-2{background:#1f9d99}.guide-gantt .gantt-bar-term-3{background:#7268ad}.guide-gantt .gantt-feoe{background:#64a542}
+.guide-metrics-table{border-collapse:collapse;width:100%;max-width:800px;margin:14px 0 19px;font-size:12px}
+.guide-metrics-table caption{caption-side:top;text-align:left;font-size:13px;font-weight:760;color:#173950;padding:5px 0 9px}
+.guide-metrics-table th,.guide-metrics-table td{border:1px solid #d9e5ec;padding:8px 10px;text-align:left}
+.guide-metrics-table th{background:#eaf3f7;color:#174763}
+.guide-metrics-table tr:nth-child(even){background:#f9fcfd}
+.guide-metrics-table td:nth-child(2),.guide-metrics-table td:nth-child(3){font-variant-numeric:tabular-nums}
+
+/* Revisar la importación completa de programaciones (versión 1.1.5.1) */
+.import-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;margin:15px 0}
+.import-stats>div{display:flex;flex-direction:column;border:1px solid #cfdee5;border-radius:11px;padding:13px 15px;background:#f7fbfc}
+.import-stats b{font-size:23px;color:#17415b}.import-stats span{font-size:12px;color:#627d8c}
+.import-field{border:1px solid #d4e4e9;border-radius:12px;background:#fafdfd;margin:11px 0;overflow:hidden}
+.import-field summary{display:flex;align-items:center;gap:15px;flex-wrap:wrap;padding:14px;cursor:pointer;color:#173b55}
+.import-field summary strong{flex:1;min-width:200px}.import-field summary span{font-size:12px;color:#607888}
+.import-field>.field,.import-field>.guide-review-line{margin:16px}.import-field>p,.import-field>.checkbox-card{margin:14px}
+.import-select{display:flex;align-items:center;gap:8px;font-size:12px;white-space:nowrap}
+.import-fields{max-height:640px;overflow:auto;padding-right:5px}
+.import-units{overflow:auto;margin:14px}.import-units table{width:100%;border-collapse:collapse;min-width:620px}
+.import-units th,.import-units td{padding:9px 10px;text-align:left;border-bottom:1px solid #dce6eb;font-size:12px}
+.import-units th{background:#e7f1f5}.import-units input{width:100px;max-width:100%}
+@media(max-width:620px){.import-stats{grid-template-columns:repeat(2,1fr)}.import-field summary strong{min-width:140px}}
+/* 1.1.6 · Sugerencias claras, editables, sin sustituir decisiones docentes. */
+.guide-ai-panel,.guide-hours-source{background:var(--soft,#eff6f9);border:1px solid #bfd5e3;border-radius:12px;padding:16px;margin-bottom:18px;line-height:1.55}
+.guide-ai-panel strong,.guide-hours-source h3{color:#123f59}
+.guide-ai-panel .actions{display:flex;flex-wrap:wrap;margin:10px 0;gap:8px}
+.guide-field-heading{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.guide-field-heading label{font-weight:650;flex:1;min-width:160px}
+.guide-field-heading button{white-space:normal;text-align:center}
+.guide-origin{display:block;color:#417182;padding-top:4px}
+.guide-ai-review{border:2px solid #448ca2;scroll-margin-top:18px}
+.guide-ai-review textarea{width:100%;min-height:170px;white-space:pre-wrap}
+.guide-ai-original{white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow:auto;font-family:inherit;font-size:.88rem;padding:12px;background:#f0f3f5;color:#2b4555}
+.guide-hours-source a{word-break:break-word}
+@media(max-width:650px){.guide-field-heading{align-items:flex-start;flex-direction:column}.guide-ai-panel .actions{flex-direction:column}}
+
+/* Programa formativo mínimo FEOE: matriz accesible y desplazamiento horizontal. */
+.guide-feoe-export{margin-top:16px;border:1px solid #c9dce2;padding:15px;border-radius:12px;background:#f8fcff}
+.guide-feoe-preview{margin-top:12px}
+.guide-feoe-minimal{min-width:1000px;width:100%}
+.guide-feoe-minimal textarea{width:100%;min-width:135px;box-sizing:border-box;resize:vertical;font:inherit}
+.guide-feoe-minimal td{vertical-align:top}
+.guide-feoe-minimal td:nth-child(1){min-width:120px}
+.guide-feoe-minimal td:nth-child(2){min-width:180px}

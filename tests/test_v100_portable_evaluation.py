@@ -20,7 +20,7 @@ import storage_config
 class Version100Tests(unittest.TestCase):
     def test_portable_root_relative_config_and_drive_moves(self):
         with tempfile.TemporaryDirectory() as temp:
-            home=Path(temp).resolve()/'pendrive_A';home.mkdir()
+            home=Path(temp)/'pendrive_A';home.mkdir()
             marker=home/'EvaluaFP.portable.json'
             marker.write_text(json.dumps({'data_dir':'Datos_FP','backup_dir':'Seguridad_Copias'}),encoding='utf-8')
             with patch.object(storage_config,'APP_HOME',home),patch.object(storage_config,'PORTABLE',True),patch.object(storage_config,'PORTABLE_FILE',marker),patch.dict(os.environ,{'EVALUAFP_DATA_DIR':''}):
@@ -51,7 +51,7 @@ class Version100Tests(unittest.TestCase):
 
     def test_relocate_copies_sqlite_preserving_source_and_paths(self):
         with tempfile.TemporaryDirectory() as temp:
-            home=Path(temp).resolve();src=home/'origen';dst=home/'destino'
+            home=Path(temp);src=home/'origen';dst=home/'destino'
             oldbacks=home/'copias_antiguas';newbacks=home/'copias_nuevas'
             (src/'datos').mkdir(parents=True);(src/'almacen').mkdir(parents=True)
             (oldbacks).mkdir();(oldbacks/'copia.zip').write_bytes(b'ZIP-DE-PRUEBA')
@@ -72,7 +72,7 @@ class Version100Tests(unittest.TestCase):
             self.assertTrue((newbacks/'copia.zip').exists())
             with closing(sqlite3.connect(dst/'datos'/'evaluafp.sqlite3')) as d:
                 self.assertEqual(d.execute('SELECT local_path FROM programmings').fetchone()[0],str(dst/'almacen'/'doc.pdf'))
-            self.assertEqual(json.loads(marker.read_text())['data_dir'],'destino')
+            self.assertEqual(json.loads(marker.read_text(encoding='utf-8'))['data_dir'],'destino')
 
     def test_sqlite_migration_closes_both_connections_on_windows(self):
         """Una conexión activa bloquearía TemporaryDirectory en Windows (WinError 32).
@@ -81,7 +81,7 @@ class Version100Tests(unittest.TestCase):
         relocate libera origen y destino antes de devolver el control.
         """
         with tempfile.TemporaryDirectory() as temp:
-            home = Path(temp).resolve()
+            home = Path(temp)
             src = home / 'origen'
             dst = home / 'destino'
             (src / 'datos').mkdir(parents=True)

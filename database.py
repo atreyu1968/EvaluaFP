@@ -136,6 +136,15 @@ def init():
         CREATE INDEX IF NOT EXISTS ix_corrections_submission ON corrections(submission_id);
         CREATE INDEX IF NOT EXISTS ix_audit_entity ON audit_log(entity,entity_id);
         ''')
+        # Migración aditiva: territorio del módulo (el resto de tablas no cambia).
+        if 'territory' not in [c[1] for c in d.execute('PRAGMA table_info(modules)')]:
+            d.execute("ALTER TABLE modules ADD COLUMN territory TEXT NOT NULL DEFAULT 'Canarias'")
+        # Biblioteca local territorial/curso con procedencia docente explícita.
+        import national_registry
+        national_registry.migrate(d)
+        # 1.1: borradores de programación didáctica, sin alterar documentos ni calificaciones.
+        import program_builder
+        program_builder.migrate(d)
         # Origen de ponderaciones: automático, programación o decisión docente.
         import weight_defaults
         weight_defaults.migrate(d)

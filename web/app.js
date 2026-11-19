@@ -2,6 +2,8 @@
 const S = {page:'inicio', modules:[], moduleId:null, moduleDetails:null, exams:[], examId:null,
   examModuleId:null, examDetails:null, submissions:[], subId:null, subDetails:null,
   uploadExamId:null, uploadStudentId:null, queue:[], pageIndex:0, proposal:null, aiSettings:null, busy:false, manualDraft:null};
+S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.nationalDocumentPreview=null;
+S.curriculumReview=null;S.feoeMinimumPreview=null;S.aiPreview=null;S.unitProposal=null;S.autoProposedModuleId=null;S.importPreview=null;S.preparePath=null;S.prepareStep=0;S.wizardDraft=null;S.prepareInfo=null;S.advanced=false;S.creatingModule=false;
 const E = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const V = v=>v==null?'No indicada':String(v)+' %';
 const $ = sel=>document.querySelector(sel);
@@ -9,6 +11,7 @@ const $all = sel=>[...document.querySelectorAll(sel)];
 const token=$('meta[name="app-token"]').content;
 function startIntro(){
  const overlay=$('#intro-overlay');if(!overlay)return;
+ overlay.hidden=true;return; // El inicio guiado sustituye al cartel temporal obligatorio.
  let remaining=10;let timer=null;
  function dismiss(){if(timer)clearInterval(timer);overlay.hidden=true;}
  $('#dismiss-intro')?.addEventListener('click',dismiss);
@@ -52,17 +55,46 @@ function promptNewStudents(moduleId,codes=[]){
  });
 }
 
+// Todas las consultas tienen un límite. Las lecturas de una pantalla anterior
+// se cancelan al navegar para que no sobrescriban la pantalla nueva.
+let navigationController = null;
+let navigationRevision = 0;
 async function API(path, method='GET', payload=null){
- const opts={method,headers:{'X-App-Token':token}};
- if(payload instanceof FormData) opts.body=payload;
+ const isRead=method.toUpperCase()==='GET';
+ const timeout= isRead ? 20000 : (path.includes('/api/programming-builder/propose')||path.includes('/api/programming-builder/improve')||path.includes('/api/programming-builder/enrich-units') ? 240000 : 180000);
+ const controller=new AbortController();
+ const navigationSignal=isRead ? navigationController?.signal : null;
+ const onNavigationAbort=()=>controller.abort('navigation');
+ if(navigationSignal){
+   if(navigationSignal.aborted)controller.abort('navigation');
+   else navigationSignal.addEventListener('abort',onNavigationAbort,{once:true});
+ }
+ const timer=setTimeout(()=>controller.abort('timeout'),timeout);
+ const opts={method,headers:{'X-App-Token':token},signal:controller.signal};
+ if(payload instanceof FormData)opts.body=payload;
  else if(payload!==null){opts.headers['Content-Type']='application/json';opts.body=JSON.stringify(payload);}
- let res;
- try {res=await fetch(path,opts);} catch(e){throw Error('Sin comunicación con el servicio local: '+e.message)}
- const body=await res.json();
- if(!res.ok){const err=Error(body.error||'Error HTTP '+res.status);err.code=body.code;err.module_id=body.module_id;err.missing_students=body.missing_students;throw err;}
- return body;
+ try{
+   let res;
+   try{res=await fetch(path,opts);}catch(e){
+     if(controller.signal.aborted){
+       if(controller.signal.reason==='navigation')throw Error('La consulta anterior se canceló al cambiar de pantalla.');
+       throw Error('La consulta ha superado el tiempo máximo de espera. Comprueba la conexión con EvalúaFP e inténtalo de nuevo.');
+     }
+     throw Error('Sin comunicación con el servicio local: '+e.message);
+   }
+   let body;
+   try{body=await res.json();}catch(e){
+     if(controller.signal.aborted)throw Error(controller.signal.reason==='navigation'?'Consulta cancelada al navegar.':'Tiempo de espera agotado.');
+     throw Error('El servicio local devolvió una respuesta no válida. HTTP '+res.status);
+   }
+   if(!res.ok){const err=Error(body?.error||'Error HTTP '+res.status);err.code=body?.code;err.module_id=body?.module_id;err.missing_students=body?.missing_students;throw err;}
+   return body;
+ }finally{
+   clearTimeout(timer);
+   if(navigationSignal)navigationSignal.removeEventListener('abort',onNavigationAbort);
+ }
 }
-function toast(text,err=false){let el=document.createElement('div');el.className='toast'+(err?' error':'');el.textContent=text;$('#toast').append(el);setTimeout(()=>el.remove(),7200);}
+function toast(text,err=false){const root=$('#toast');if(!root)return;while(root.children.length>=2)root.firstElementChild.remove();let el=document.createElement('div');el.className='toast'+(err?' error':'');el.textContent=text;root.append(el);setTimeout(()=>el.remove(),4300);}
 function setLoading(text){$('#main').innerHTML='<div class="loading">'+E(text||'Cargando…')+'</div>';}
 async function busy(work,ok){
  if(S.busy)return;
@@ -71,21 +103,31 @@ async function busy(work,ok){
  catch(e){console.error(e);toast(e.message||'Error no identificado',true);return null;}
  finally{S.busy=false;document.body.style.cursor=original;}
 }
-function titles(){return {inicio:'Panel de control',programaciones:'Programaciones didácticas',examenes:'Exámenes y rúbricas',
+function titles(){return {inicio:'Mi espacio docente',preparar:'Preparar mi módulo',programaciones:'Edición avanzada de la programación',examenes:'Exámenes y rúbricas',
  entregas:'Registro de entregas',correcciones:'Visor y correcciones',evaluacion:'Evaluación del módulo',ajustes:'Configuración local e IA'};}
 async function page(name){
+ const revision=++navigationRevision;
+ if(navigationController)navigationController.abort('navigation');
+ navigationController=new AbortController();
  S.page=name;$('#page-title').textContent=titles()[name]||name;
  $all('[data-page]').forEach(el=>el.classList.toggle('active',el.dataset.page===name));
  setLoading();
  try{
+ const supported=['inicio','preparar','programaciones','examenes','entregas','correcciones','evaluacion','ajustes'];
+ if(!supported.includes(name))throw Error('No se reconoce la sección solicitada: '+name);
  if(name==='inicio')await viewHome();
+ if(name==='preparar')await viewPrepare();
  if(name==='programaciones')await viewPrograms();
  if(name==='examenes')await viewExams();
  if(name==='entregas')await viewUploads();
  if(name==='correcciones')await viewCorrections();
  if(name==='ajustes')await viewSettings();
  if(name==='evaluacion')await viewEvaluation();
- }catch(ex){console.error(ex);$('#main').innerHTML='<div class="hint danger-note">'+E(ex.message)+'</div>';}
+ }catch(ex){
+  if(revision!==navigationRevision)return;
+  console.error(ex);
+  $('#main').innerHTML='<section class="panel"><h2>No se ha podido abrir esta pantalla</h2><p class="hint danger-note">'+E(ex?.message||'Error desconocido')+'</p><div class="actions"><button type="button" class="btn secondary" data-action="retry-page">Reintentar</button><button type="button" class="btn mutedbtn" data-page="inicio">Volver al inicio</button></div></section>';
+ }
 }
 async function listModules(){S.modules=await API('/api/modules');return S.modules;}
 async function listExams(){S.exams=await API('/api/exams');return S.exams;}
@@ -96,18 +138,672 @@ function labelStatus(status){const map={received:'Recibido',transcribed:'Transcr
  return `<span class="status ${E(status)}">${E(map[status]||status)}</span>`;}
 function intro(text){return `<p class="lead">${E(text)}</p>`;}
 async function viewHome(){
- const [stats]=await Promise.all([API('/api/dashboard'),listModules(),listExams(),listSubs()]);
- const items=[['Módulos',stats.modules,'▤'],['Criterios de evaluación',stats.criteria,'◎'],['Exámenes',stats.exams,'✎'],['Entregas',stats.submissions,'▧'],['Páginas almacenadas',stats.pages,'▦'],['Correcciones',stats.corrections,'☑']];
- $('#main').innerHTML=`${intro('Cree exámenes alineados con la programación, digitalice respuestas manuscritas y valide calificaciones documentadas.')}
- <div class="cards">${items.map(i=>`<div class="stat"><span class="sym">${i[2]}</span><div class="number">${i[1]}</div><small>${i[0]}</small></div>`).join('')}</div>
- <div class="grid2"><section class="card"><h2>Flujo de trabajo</h2>
- <div class="itemlist"><div class="item">① Importar programación y confirmar RA / CE / pesos</div>
- <div class="item">② Generar preguntas y rúbricas por criterio</div><div class="item">③ Subir PDF o fotos multipágina en orden</div>
- <div class="item">④ Transcribir, corregir y validar la nota</div><div class="item">⑤ Consultar originales e imprimir informe</div></div>
- <div class="actions"><button class="btn" data-page="programaciones">Empezar con una programación</button></div></section>
- <section class="card"><h2>Últimas entregas</h2>${S.submissions.length?`<div class="itemlist">${S.submissions.slice(0,6).map(s=>`<div class="item"><div><div class="title">${E(s.student_name)}</div><div class="detail">${E(s.exam_title)} · ${s.page_count} página(s)</div></div><button class="btn secondary smallbtn" data-action="open-sub" data-id="${s.id}">Revisar</button></div>`).join('')}</div>`:empty('Todavía no se han recibido exámenes.')}
- <p class="hint">Los originales se guardan en el disco local. La IA solo interviene cuando el docente solicita el análisis y autoriza el envío al proveedor elegido.</p></section></div>`;
+ await listModules();
+ const hasModule=S.modules.length>0;
+ const selected=S.modules.find(m=>Number(m.id)===Number(S.moduleId))||S.modules[0];
+ if(selected&&!S.moduleId)S.moduleId=selected.id;
+ const cards=[
+ ['preparar','▤','Preparar mi módulo','Importar una programación, crear un borrador o configurar RA y CE.'],
+ ['examenes','✎','Crear una prueba','Generar un examen o utilizar tus propias preguntas.'],
+ ['entregas','▧','Corregir trabajos','Cargar PDF o fotografías y revisar propuestas de corrección.'],
+ ['evaluacion','▥','Ver la evaluación','Consultar notas por RA y CE y preparar exportaciones.']];
+ $('#main').innerHTML=`<div class="welcome-card"><p class="welcome-kicker">EMPIEZA AQUÍ</p>
+ <h2>${hasModule?'¿Qué necesitas hacer hoy?':'Prepara tu primer módulo en unos pasos'}</h2>
+ <p>${hasModule?'Selecciona una tarea. EvalúaFP conserva los documentos y las calificaciones en tu equipo.':'Puedes incorporar tu programación actual, crear un borrador editable o configurar solo la evaluación. No necesitas adaptar previamente tu documento a una plantilla.'}</p>
+ ${selected?`<div class="welcome-module"><strong>Tu módulo:</strong> ${E(selected.name)} · ${E(selected.academic_year)}</div>`:''}
+ </div><div class="task-grid">${cards.map(([key,icon,title,description],i)=>`<button type="button" class="task-card" data-page="${key}"><span class="task-icon">${icon}</span><strong>${title}</strong><span>${description}</span><span class="task-action">${!hasModule&&i>0?'Primero, prepara un módulo':'Acceder →'}</span></button>`).join('')}</div>
+ <section class="panel" style="margin-top:20px"><h2>Cómo funciona</h2><p>① Prepara tu módulo → ② Crea actividades → ③ Registra y corrige entregas → ④ Valida las notas.</p>
+ <p class="small">La inteligencia artificial ayuda a crear y corregir propuestas. La decisión sobre currículo y calificaciones corresponde siempre al docente.</p></section>`;
 }
+/* 1.1 — Preparación curricular sin JSON ni decisiones automáticas no confirmadas. */
+const TERRITORY_NAMES=['Andalucía','Aragón','Principado de Asturias','Illes Balears','Canarias','Cantabria','Castilla-La Mancha','Castilla y León','Cataluña','Comunitat Valenciana','Extremadura','Galicia','Comunidad de Madrid','Región de Murcia','Comunidad Foral de Navarra','País Vasco','La Rioja','Ceuta','Melilla'];
+function territoryOptions(selected){return (!selected?'<option value="" disabled selected>Seleccione la comunidad autónoma o ciudad</option>':'')+TERRITORY_NAMES.map(name=>`<option value="${E(name)}" ${String(selected)===name?'selected':''}>${E(name)}</option>`).join('');}
+function calendarVacationLines(cfg){return (cfg?.vacation_periods||[]).map(x=>`${x.start};${x.end};${x.label}`).join('\n');}
+function calendarHolidayLines(cfg){return (cfg?.regional_non_teaching_days||[]).map(x=>`${x.date};${x.reason}`).join('\n');}
+function readVacationLines(text){return String(text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).map(line=>{
+ const parts=line.split(';');if(parts.length<2||parts.length>3)throw Error('Escriba los periodos como AAAA-MM-DD;AAAA-MM-DD;Motivo.');
+ return {start:parts[0].trim(),end:parts[1].trim(),label:(parts[2]||'Vacaciones/no lectivo').trim()};
+});}
+function readHolidayLines(text){return String(text||'').split(/\r?\n/).map(x=>x.trim()).filter(Boolean).map(line=>{
+ const n=line.indexOf(';');if(n===-1)throw Error('Escriba cada festivo como AAAA-MM-DD;Motivo.');
+ return {date:line.slice(0,n).trim(),reason:line.slice(n+1).trim()};
+});}
+const WD_FIELDS=['source_type','region','official_module_code','official_cycle_code','fp_regime','curriculum_source_url','curriculum_source_description','center','teacher','department','academic_context','normative_references',
+ 'objectives','competencies','methodology','resources','inclusion','assessment','instruments','recovery','enterprise','observations',
+ ...['justification','center_characteristics','student_characteristics','environment_context','identification_data',
+ 'qualifications','contents','learning_activities','interdisciplinarity','extracurricular','assessment_sessions',
+ 'grading','promotion','attendance','extraordinary_assessment']];
+const GUIDE_STEPS=['Identificación','Normativa y objetivos','Metodología','Evaluación','Temporalización y FEOE','Revisión y exportación'];
+const AI_EDITABLE_FIELDS=new Set(['justification','academic_context','center_characteristics','student_characteristics','environment_context',
+ 'objectives','competencies','qualifications','contents','learning_activities','methodology','interdisciplinarity',
+ 'inclusion','resources','assessment','instruments','grading','assessment_sessions','recovery','extraordinary_assessment',
+ 'attendance','enterprise','extracurricular','observations','normative_references']);
+function aiToolbar(){
+ return `<section class="guide-ai-panel"><strong>Asistente de redacción de la programación</strong>
+ <p>Los apartados se rellenan inicialmente con propuestas locales editables. Si autorizas el envío de los RA y CE a tu proveedor de IA configurado, puedes obtener una redacción desarrollada sin transmitir datos del alumnado ni del profesorado.</p>
+ <div class="actions"><button class="btn secondary" type="button" data-action="prepare-ai-all">Desarrollar todos los apartados con IA</button>
+ <button class="btn mutedbtn" type="button" data-action="prepare-ai-local">Completar campos vacíos sin IA</button></div>
+ <p class="small">La normativa y las horas se obtienen de fuentes identificadas, no de invenciones de IA. Solo se sustituyen los textos locales iniciales, nunca los modificados por el docente.</p></section>`;
+}
+function aiPreviewPanel(){
+ const p=S.aiPreview;
+ if(!p)return '';
+ return `<section class="panel guide-ai-review" role="region" aria-label="Revisar nueva redacción"><h3>Revisar mejora de «${E(p.field)}»</h3>
+ <p class="small">El texto original se conserva hasta que aceptes la sugerencia. Puedes modificar la propuesta antes de aplicarla.</p>
+ <details><summary>Ver redacción original</summary><pre class="guide-ai-original">${E(p.original)}</pre></details>
+ <label for="guide-ai-proposal">Texto sugerido por IA</label><textarea id="guide-ai-proposal" rows="8" maxlength="12000">${E(p.proposal)}</textarea>
+ <div class="actions"><button type="button" class="btn" data-action="guide-ai-accept">Aplicar redacción revisada</button>
+ <button type="button" class="btn mutedbtn" data-action="guide-ai-discard">Conservar texto del profesor</button></div></section>`;
+}
+function applyAssistantFields(result,mode='base'){
+ if(!S.wizardDraft||!result||!result.fields)return {applied:0,skipped:0};
+ S.wizardDraft.assistant_meta=S.wizardDraft.assistant_meta||{};
+ let applied=0,skipped=0;
+ for(const [key,text] of Object.entries(result.fields)){
+   if(!WD_FIELDS.includes(key)||typeof text!=='string'){skipped++;continue;}
+   const old=String(S.wizardDraft[key]||'');const meta=S.wizardDraft.assistant_meta[key];
+   const isLocalDraft=meta&&!meta.teacher_edited&&String(meta.origin||'').startsWith('Plantillas locales');
+   if(!old.trim()||(mode==='ai'&&isLocalDraft)){
+     S.wizardDraft[key]=text;
+     S.wizardDraft.assistant_meta[key]={origin:result.source||'Propuesta local',teacher_edited:false};applied++;
+   }else skipped++;
+ }
+ return {applied,skipped};
+}
+
+function guideWeights(info){
+ const ras=info.outcomes||[],ces=info.criteria||[];
+ const automatic=ras.length>0&&ras.every(r=>r.weight_origin==='default')&&ces.every(c=>c.weight_origin==='default');
+ return `<fieldset class="guide-fieldset guide-weights"><legend>Cuadrícula de RA, CE y ponderaciones</legend>
+ <p class="small">Puedes dejar la ponderación automática, que da el mismo valor global a cada CE, o desactivarla y editar todos los pesos. Los CE de cada RA y el conjunto de RA deben sumar 100,00 %.</p>
+ <label class="guide-confirm"><input type="checkbox" id="guide-automatic-weights" ${automatic?'checked':''}> Ponderación automática por número de CE</label>
+ <div class="guide-weight-scroll"><table class="guide-weight-table"><caption>Distribución de RA y CE confirmados</caption>
+ <thead><tr><th>RA</th><th>CE asociado</th><th>Peso del RA (%)</th><th>Peso del CE dentro del RA (%)</th></tr></thead><tbody>
+ ${ras.map(ra=>{const mine=ces.filter(c=>Number(c.outcome_id)===Number(ra.id));return mine.map((ce,i)=>`<tr data-weight-ra-row="${Number(ra.id)}">
+ <td>${i?'<span class="small">↳</span>':`<strong>${E(ra.code)}</strong>`}</td>
+ <td><strong>${E(ce.code)}</strong><span class="small" title="${E(ce.description)}">${E(ce.description.slice(0,60))}</span></td>
+ <td>${i?'':`<input data-weight-ra="${Number(ra.id)}" type="number" step="0.01" min="0.01" max="100" value="${ra.weight==null?'':Number(ra.weight).toFixed(2)}" ${automatic?'disabled':''}>`}</td>
+ <td><input data-weight-ce="${Number(ce.id)}" data-weight-parent="${Number(ra.id)}" type="number" step="0.01" min="0.01" max="100" value="${ce.weight==null?'':Number(ce.weight).toFixed(2)}" ${automatic?'disabled':''}></td></tr>`).join('');}).join('')}
+ </tbody></table></div>
+ <div class="actions"><button type="button" class="btn secondary" data-action="guide-save-weights">Confirmar ponderaciones</button></div>
+ <p class="small">La modificación queda registrada y no se aplicará si ya hay calificaciones finales cerradas.</p></fieldset>`;
+}
+function guideField(name,label,hint='',rows=3){
+ const value=E(S.wizardDraft?.[name]||'');
+ const meta=S.wizardDraft?.assistant_meta?.[name];
+ const origin=meta?(meta.teacher_edited?'Modificado por docente':meta.origin):'';
+ return `<div class="field guide-field"><div class="guide-field-heading"><label for="guide-${name}">${E(label)}</label>
+ ${AI_EDITABLE_FIELDS.has(name)?`<button class="btn mutedbtn smallbtn" type="button" data-action="prepare-ai-improve" data-field="${E(name)}">Mejorar redacción con IA</button>`:''}</div>
+ ${rows===1?`<input id="guide-${name}" name="${name}" value="${value}" maxlength="12000">`:
+ `<textarea id="guide-${name}" name="${name}" rows="${rows}" maxlength="12000">${value}</textarea>`}
+ ${origin?`<span class="small guide-origin">Origen: ${E(origin)}</span>`:''}
+ ${hint?`<small class="small">${E(hint)}</small>`:''}</div>`;
+}
+function fmtOfficialDate(value){
+ const s=String(value||'');return /^\d{8}$/.test(s)?s.slice(6,8)+'/'+s.slice(4,6)+'/'+s.slice(0,4):s;
+}
+function boeDiscoveryPanel(){
+ const found=S.boeCandidates;
+ const inspect=S.boeInspection;
+ return `<section class="guide-calendar-summary"><h3>Buscar legislación estatal por ciclo (BOE)</h3>
+ <p class="small">Consulta opcional a la base de legislación consolidada del BOE. No envía textos docentes ni información del alumnado. Solo muestra normas candidatas; confirma el título, módulo y disposiciones de tu comunidad autónoma.</p>
+ <div class="actions"><button class="btn secondary" type="button" data-action="national-boe-search">Buscar normas del ciclo en el BOE</button>
+ <div class="field" style="flex:1;min-width:220px"><label>O introducir identificador BOE-A-AAAA-NNN</label><input id="national-boe-id" value="${E(S.boeSelectedId||'')}" placeholder="BOE-A-2011-19533"></div>
+ <button class="btn secondary" type="button" data-action="national-boe-inspect">Comprobar identificación y modificaciones</button></div>
+ ${found?`<div class="guide-review-line"><strong>${found.records.length} normas candidatas</strong> · ${E(found.academic_year)}
+ <p class="small">${E(found.notice)}</p>
+ ${found.records.length?`<div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Norma</th><th>Fecha de publicación</th><th>Opciones</th></tr></thead><tbody>
+ ${found.records.map(r=>`<tr><td><b>${E(r.id)}</b><br>${E(r.title)}</td><td>${E(fmtOfficialDate(r.publication_date||'Consultar BOE'))}</td><td><button class="btn mutedbtn smallbtn" type="button" data-action="national-boe-pick" data-boe-id="${E(r.id)}">Revisar</button><a href="${E(r.url)}" target="_blank" rel="noopener noreferrer">Ver BOE</a></td></tr>`).join('')}
+ </tbody></table></div>`:'<p class="hint warning">La búsqueda no encontró normas consolidadas. No significa que el título no exista. Consulta el BOE y el boletín autonómico con los enlaces oficiales.</p>'}</div>`:''}
+ ${inspect?`<div class="guide-review-line"><h4>Norma consultada: ${E(inspect.id)}</h4>
+ <p><b>${E(inspect.title)}</b></p><p>Publicación: ${E(fmtOfficialDate(inspect.publication_date||'No proporcionada'))}. Última actualización informada: ${E(fmtOfficialDate(inspect.last_update||'No proporcionada'))}.</p>
+ <p><b>Estado de consolidación informado:</b> ${E(inspect.consolidation_state||'No indicado')} · <b>Relaciones posteriores publicadas:</b> ${Number(inspect.reported_amendment_count||0)}</p>
+ ${(inspect.reported_amendments||[]).length?`<details><summary>Consultar normas que modifican o afectan a esta disposición</summary><ul>${inspect.reported_amendments.map(ref=>`<li><a href="${E(ref.url)}" target="_blank" rel="noopener noreferrer">${E(ref.id)}</a> · ${E(ref.type||'Relación normativa')} · ${E(ref.title||'')}</li>`).join('')}</ul></details>`:'<p class="small">La consulta no devuelve relaciones posteriores identificables; esto no significa que no existan modificaciones.</p>'}
+ <p class="small">${E(inspect.notice)}</p>
+ <div class="actions"><a href="${E(inspect.url)}" target="_blank" rel="noopener noreferrer">Abrir la norma en el BOE</a>
+ <button class="btn secondary" type="button" data-action="national-boe-add">Añadir a mi borrador como norma pendiente de revisión</button></div></div>`:''}
+ </section>`;
+}
+function nationalSourcesPanel(){
+ const record=S.nationalSources;
+ if(!record)return `<p class="small">Las fuentes oficiales se consultarán cuando abra esta sección.</p>`;
+ const source=record.sources||{};
+ return `<section class="guide-calendar-summary"><h3>Localizar fuentes oficiales · ${E(source.territory||'')} · ${E(source.academic_year||'')}</h3>
+ <p class="small">Abre el directorio del Ministerio o el portal de tu administración, localiza la disposición correspondiente a tu título y curso y comprueba sus modificaciones. EvalúaFP no considerará oficial ningún dato solo por estar enlazado aquí.</p>
+ <div class="actions">${(source.links||[]).map(x=>`<a class="btn secondary smallbtn" href="${E(x.url)}" target="_blank" rel="noopener noreferrer">${E(x.label)}</a>`).join('')}</div>
+ ${record.hours_record?`<p class="small"><strong>Ficha horaria reutilizable del mismo curso:</strong> ${fmtSchoolNumber(record.hours_record.total_hours)} h totales · ${fmtSchoolNumber(record.hours_record.weekly_hours)} h/semana · ${E(record.hours_record.source_title||'Fuente docente guardada')}.</p>`:''}
+ ${record.calendar_record?`<p class="small"><strong>Calendario guardado para el mismo centro:</strong> ${E(record.calendar_record.center)} · ${E(record.calendar_record.academic_year)}.</p>`:''}
+ </section>`;
+}
+
+function curriculumReviewPanel(){
+ const info=S.prepareInfo||{},module=info.module||{},draft=S.wizardDraft||info.draft||{};
+ const report=S.curriculumReview;
+ return `<section class="guide-calendar-summary"><h3>Extracción contrastable de RA y CE (sin IA)</h3>
+ <p class="small">Selecciona una programación o un currículo oficial con el <b>nombre y código del módulo</b> y sus RA/CE completos. Se presenta una vista previa con páginas o párrafos; no se cambia ninguna calificación ni ponderación.</p>
+ <form id="curriculum-review-form" class="formgrid">
+ <input type="hidden" name="module_id" value="${Number(S.moduleId||0)}">
+ <div class="field"><label>Código oficial del módulo</label><input type="text" name="module_code" pattern="[0-9]{4}" maxlength="4" required value="${E(draft.official_module_code||'')}" placeholder="0650"></div>
+ <div class="field"><label>Clase de documento</label><select name="document_kind"><option value="programacion">Programación didáctica</option><option value="norma_oficial">Disposición curricular oficial</option></select></div>
+ <div class="field"><label>PDF, DOCX, TXT o MD (máx. 15 MB)</label><input name="document" type="file" accept=".pdf,.docx,.txt,.md" required></div>
+ <div class="actions"><button class="btn secondary" type="submit">Previsualizar RA y CE sin modificar datos</button></div></form>
+ ${report?`<div class="guide-review-line"><h4>Resultados encontrados: ${Number(report.summary?.ra||0)} RA y ${Number(report.summary?.ce||0)} CE</h4>
+ <p>Documento: ${E(report.source?.filename||'')} · Huella SHA-256: <code>${E(report.source?.sha256||'')}</code></p>
+ <p class="hint warning">Revisión docente obligatoria. La extracción no confirma la vigencia del currículo. Los RA/CE existentes y sus notas no se modifican.</p>
+ <div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>RA/CE</th><th>Enunciado extraído</th><th>Procedencia</th></tr></thead><tbody>
+ ${(report.outcomes||[]).flatMap(ra=>[ra,...(ra.criteria||[])]).map(x=>`<tr><td>${E(x.code)}</td><td>${E(x.description)}</td><td>${E((x.locations||[]).join(', '))}</td></tr>`).join('')}
+ </tbody></table></div>
+ <p><b>Diferencias frente al módulo actual:</b> ${Object.keys(report.comparison?.counts||{}).length?Object.entries(report.comparison.counts).map(([type,count])=>`${E(type)}: ${Number(count)}`).join(' · '):'Sin diferencias detectadas'}.</p>
+ <details><summary>Propuesta de ponderaciones iguales (no aplicada)</summary><div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>RA</th><th>Peso en el módulo</th><th>CE</th><th>Peso global CE</th></tr></thead><tbody>
+ ${(report.default_weight_proposal||[]).flatMap(ra=>ra.criteria.map(ce=>`<tr><td>${E(ra.code)}</td><td>${E(ra.module_weight_pct)} %</td><td>${E(ce.code)}</td><td>${E(ce.module_weight_pct)} %</td></tr>`)).join('')}
+ </tbody></table></div></details>
+ ${report.existing_ra_count?'<p class="hint warning">Existen criterios previamente registrados: solo se ofrece comparación; nunca se sustituyen automáticamente.</p>':'<p class="small">Esta vista previa no guarda RA/CE. Tras revisarlos, puede incorporarlos mediante los controles curriculares existentes.</p>'}
+ </div>`:''}
+ </section>`;
+}
+
+function wizardStepMarkup(step, info){
+ const d=S.wizardDraft,m=info.module;
+ switch(step){
+ case 0:return `<h2>1. Identificación del módulo</h2><p class="small">Los datos del ciclo y módulo se han tomado de su ficha local. No es necesario volver a escribirlos.</p>
+ <div class="guide-review-line"><b>Módulo:</b> ${E(m.name)} · ${E(m.cycle)} · ${E(m.academic_year)}</div>
+ <div class="formgrid"><div class="field guide-field"><label for="guide-region">Administración educativa competente</label><select id="guide-region" name="region" required>${territoryOptions(d.region)}</select><small class="small">Las fuentes y el calendario dependen de esta selección y del curso académico.</small></div>
+ ${guideField('official_module_code','Código oficial del módulo (si se conoce)','Ej.: 0650. Evita confundir módulos con nombres parecidos.',1)}
+ ${guideField('official_cycle_code','Código del ciclo o título (si se conoce)','Para vincular el currículo sin ambigüedades.',1)}
+ <div class="field"><label for="guide-fp_regime">Régimen de formación profesional</label><select id="guide-fp_regime" name="fp_regime"><option value="pendiente" ${!d.fp_regime||d.fp_regime==='pendiente'?'selected':''}>Por determinar</option><option value="general" ${d.fp_regime==='general'?'selected':''}>General</option><option value="intensivo" ${d.fp_regime==='intensivo'?'selected':''}>Intensivo</option></select></div>
+ ${guideField('center','Centro educativo','',1)}
+ ${guideField('teacher','Docente responsable','',1)}${guideField('department','Departamento','',1)}</div>
+ ${guideField('academic_context','Punto de partida y diagnóstico inicial','No incluya datos personales del alumnado.')}${guideField('identification_data','Datos identificativos y características del módulo')}
+ ${guideField('justification','Justificación y principios de la programación')}
+ ${guideField('center_characteristics','Características del centro y medios disponibles')}
+ ${guideField('student_characteristics','Características generales del grupo')}
+ ${guideField('environment_context','Entorno de aprendizaje y sector productivo')}`;
+ case 1:return `<h2>2. Normativa y objetivos</h2><p class="hint warning">EvalúaFP no inventa normativa ni sustituye su revisión. Contraste la identificación del título y el currículo vigente en su comunidad autónoma.</p>
+ ${nationalSourcesPanel()}
+ ${boeDiscoveryPanel()}
+ ${guideField('curriculum_source_url','URL del currículo oficial aplicable','BOE, boletín autonómico o web oficial. Debe corresponder al territorio y curso indicados.',1)}
+ ${guideField('curriculum_source_description','Título, identificación y versión de la disposición curricular','Indique la fecha y las modificaciones comprobadas.',1)}
+ <label class="guide-confirm"><input type="checkbox" name="curriculum-confirmed" ${d.curriculum_confirmed?'checked':''}> He contrastado que el currículo y sus RA/CE corresponden a mi ciclo, módulo, comunidad y curso.</label>
+ ${guideField('normative_references','Referencias normativas verificadas','Indique las normas, su fecha y fuentes. No se rellenan automáticamente con referencias no comprobadas.')}
+ ${guideField('objectives','Objetivos del módulo y su contribución al ciclo')}
+ ${guideField('competencies','Competencias profesionales, personales y sociales relacionadas')}
+ ${guideField('qualifications','Cualificaciones profesionales y estándares de competencia')}`;
+ case 2:return `<h2>3. Metodología y recursos</h2>
+ ${guideField('methodology','Metodología didáctica','Explique estrategias, actividades y organización de la enseñanza.')}
+ ${guideField('resources','Recursos, materiales y herramientas')}
+ ${guideField('inclusion','Atención a las diferencias individuales y accesibilidad')}
+ ${guideField('contents','Contenidos didácticos asociados a los RA y CE')}
+ ${guideField('learning_activities','Situaciones de aprendizaje y actividades')}
+ ${guideField('interdisciplinarity','Interdisciplinariedad y coordinación entre módulos')}`;
+ case 3:return `<h2>4. Evaluación y recuperación</h2><p class="hint">Los pesos de RA y CE se toman de la estructura curricular confirmada. Este documento no cambia las calificaciones ni la política de evaluación guardada.</p>
+ ${guideField('assessment','Procedimientos y criterios de calificación','Explique cómo se obtienen las evidencias y cómo se realiza el cálculo.')}
+ ${guideField('instruments','Instrumentos de evaluación','Exámenes, prácticas, portafolio, observación, proyectos, etc.')}
+ ${guideField('recovery','Actividades y procedimientos de recuperación','Indique medidas para RA/CE no superados.')}
+ ${guideField('grading','Criterios de calificación y ponderaciones')}
+ ${guideField('assessment_sessions','Sesiones de evaluación')}
+ ${guideField('extraordinary_assessment','Evaluación extraordinaria y pruebas pendientes')}
+ ${guideField('promotion','Promoción y continuidad formativa')}
+ ${guideField('attendance','Asistencia y evaluación continua')}
+ ${guideWeights(info)}`;
+ case 4:return `<h2>5. Temporalización y formación en empresa (FEOE)</h2>
+ <p class="small">El calendario se calcula con la carga horaria del módulo, las sesiones por día y los días no lectivos. <b>Nunca se presuponen seis horas por semana.</b> Revisa las fuentes, confirma las horas y ajusta unidades y FEOE.</p>
+ <div class="guide-calendar-summary">${S.calendarInfo?.profile?`
+ <strong>Calendario de referencia: ${E(S.calendarInfo.territory)} · ${E(m.academic_year)}</strong>
+ <p>${E(S.calendarInfo.profile.source_description)}. ${E(S.calendarInfo.notice)}</p>
+ <p>Vacaciones: ${(d.schedule?.vacation_periods||[]).map(p=>E(p.start+' a '+p.end)).join(' · ')||'Sin periodos registrados'}.</p>
+ <p>${(S.calendarInfo.profile.source_urls||[]).map((link,i)=>`<a target="_blank" rel="noopener noreferrer" href="${E(link)}">Fuente oficial ${i+1}</a>`).join(' · ')}</p>
+ `:`<strong>Calendario sin ficha incorporada para ${E(d.region)} · ${E(m.academic_year)}</strong>
+ <p>Introduce fechas, vacaciones, festivos locales y del centro y la fuente oficial. EvalúaFP no aplicará fechas de otra comunidad ni de otro curso. <a href="https://www.todofp.es/" rel="noopener noreferrer" target="_blank">Consultar recursos de FP</a>.</p>`}</div>
+  ${nationalSourcesPanel()}
+ <div class="guide-hours-source"><h3>Datos horarios procedentes de la ficha curricular</h3>
+ ${info.hours_reference?`<p>Coincidencia por ciclo y denominación: <b>${E(info.hours_reference.title)} (${E(info.hours_reference.code)})</b>. ${info.hours_reference.course?'Curso del ciclo '+E(info.hours_reference.course)+'. ':''} ${info.hours_reference.source==='biblioteca_local'?'Ficha local revisada por docente':'Referencia de catálogo pendiente de comprobar'}. Horas propuestas: <b>${fmtSchoolNumber(info.hours_reference.total_hours)} h totales</b> · <b>${fmtSchoolNumber(info.hours_reference.weekly_hours)} h/semana</b>.</p><p><a href="${E(info.hours_reference.source_url)}" target="_blank" rel="noopener noreferrer">Abrir la fuente horaria indicada</a>${d.region==='Canarias'?' · Comprueba también las modificaciones posteriores del Gobierno de Canarias':''}</p>`:
+ `<p class="hint warning">No se ha encontrado una coincidencia curricular inequívoca. No se inventarán horas: consulta el currículo estatal o autonómico y completa las dos cifras.</p>`}
+ <p class="small">Los datos de la ficha son una referencia sujeta a comprobación. Las horas de tu centro pueden responder a una organización específica autorizada.</p>
+ <details class="guide-calendar-details"><summary>Ayuda IA · interpretar un fragmento oficial con las horas del módulo</summary>
+ <p class="small">Copia desde el boletín un extracto que contenga <strong>código o nombre del módulo, horas anuales y horas semanales</strong>. La IA solo propondrá valores si puede señalar una cita literal y la fila coincide. No se transmite ninguna programación ni información personal.</p>
+ <textarea id="national-hours-excerpt" rows="5" maxlength="14000" placeholder="Pega aquí la fila o tabla publicada en el boletín oficial..."></textarea>
+ <div class="actions"><button class="btn secondary" type="button" data-action="national-ai-extract-hours">Interpretar extracto con IA</button></div>
+ ${S.nationalHoursPreview?`<div class="guide-review-line"><b>Propuesta sin aplicar:</b> ${fmtSchoolNumber(S.nationalHoursPreview.total_hours)} h totales y ${fmtSchoolNumber(S.nationalHoursPreview.weekly_hours)} h/semana.<p class="small">Cita de la fuente: ${E(S.nationalHoursPreview.literal_quote)}</p>
+ <button type="button" class="btn" data-action="national-ai-apply-hours">Usar cifras propuestas (pendientes de confirmación)</button></div>`:''}
+ </details></div>
+ <details class="guide-calendar-details"><summary>Importar las horas de todo el ciclo desde una tabla oficial (CSV o Excel copiado)</summary>
+ <p class="small">La tabla debe corresponder al <strong>mismo ciclo, territorio y curso</strong>. Copia cuatro columnas desde Excel/Calc o un CSV, con encabezados <b>Código; Módulo; Horas totales; Horas semanales</b>. No se utilizará IA ni se enviarán datos a Internet.</p>
+ <div class="guide-fieldset"><label for="national-table-file"><b>O seleccionar documento oficial PDF/Word</b></label>
+ <input id="national-table-file" type="file" accept=".pdf,.docx">
+ <label class="guide-confirm"><input id="national-ocr" type="checkbox"> Intentar OCR si el PDF contiene páginas escaneadas (requiere Tesseract en este equipo; máximo 8 páginas)</label>
+ <button type="button" class="btn secondary" data-action="national-document-preview">Leer tabla del archivo sin guardar datos</button>
+ <p class="small">El documento no sale de tu ordenador. Se reconocen únicamente filas donde figuran código, módulo, horas totales y horas semanales. Revisa cada cifra y la fuente antes de importarla.</p></div>
+ <textarea id="national-hour-table" rows="5" maxlength="80000" placeholder="Código;Módulo;Horas totales;Horas semanales&#10;0650;Proceso integral de la actividad comercial;202;6">${E(S.nationalTableText||'')}</textarea>
+ <div class="actions"><button type="button" class="btn secondary" data-action="national-table-preview">Comprobar filas</button></div>
+ ${S.nationalTablePreview?`<div class="guide-review-line"><p><strong>${S.nationalTablePreview.count} módulos detectados</strong></p>
+ <div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Código</th><th>Módulo</th><th>Horas totales</th><th>Horas/semana</th></tr></thead><tbody>
+ ${S.nationalTablePreview.rows.slice(0,15).map(x=>`<tr><td>${E(x.code)}</td><td>${E(x.name)}</td><td>${fmtSchoolNumber(x.total_hours)}</td><td>${fmtSchoolNumber(x.weekly_hours)}</td></tr>`).join('')}
+ </tbody></table></div><p class="small">Para guardar se usarán la URL y la descripción de la disposición horaria indicadas más abajo. No se sustituirán otras fichas ya confirmadas.</p>
+ <button type="button" class="btn" data-action="national-table-import">Guardar todas las filas para este ciclo y curso</button></div>`:''}
+ </details>
+ <fieldset class="guide-fieldset"><legend>Horas y fechas del módulo</legend>
+ <div class="formgrid">
+ <div class="field"><label>Horas semanales del módulo (fuente revisable)</label><input name="schedule-weekly-hours" type="number" min="0.01" max="40" step="0.01" value="${E(d.schedule?.weekly_hours||'')}" required></div>
+ <div class="field"><label>Horas totales del módulo</label><input name="schedule-total-hours" type="number" min="0.01" max="2500" step="0.01" value="${E(d.schedule?.total_hours||'')}" placeholder="Consultar ficha curricular" required></div>
+ <div class="field"><label>Inicio de las clases</label><input name="schedule-start-date" type="date" value="${E(d.schedule?.start_date||'')}" required></div>
+ <div class="field"><label>Fin de las clases</label><input name="schedule-end-date" type="date" value="${E(d.schedule?.end_date||'')}" required></div>
+ ${d.region==='Canarias'?`<div class="field"><label>Isla</label><select name="schedule-island">${['Tenerife','Gran Canaria','La Palma','Lanzarote','Fuerteventura','La Gomera','El Hierro','La Graciosa'].map(x=>`<option ${x===(d.schedule?.island||'Tenerife')?'selected':''}>${x}</option>`).join('')}</select></div>`:''}
+ <div class="field"><label>Municipio (para festivos locales)</label><input name="schedule-municipality" maxlength="120" value="${E(d.schedule?.municipality||'')}" placeholder="Municipio del centro"></div></div>
+ <details class="guide-calendar-details"><summary>Horario por días · precisión de los festivos</summary>
+ <p class="small">Si no lo indicas, se estimará un reparto uniforme entre lunes y viernes. Para descontar festivos por sesiones reales, introduce las horas que impartes cada día. La suma debe coincidir con las horas semanales.</p>
+ <div class="guide-weekdays">${['Lunes','Martes','Miércoles','Jueves','Viernes'].map((day,i)=>`<label>${day}<input data-weekday="${i}" type="number" min="0" max="12" step="0.5" value="${E(d.schedule?.weekday_hours?.[i]||'')}" placeholder="0"></label>`).join('')}</div></details>
+ <div class="formgrid"><div class="field"><label>Cierre de la 1.ª evaluación</label><input name="schedule-term-1" type="date" value="${E(d.schedule?.evaluation_ends?.[0]||'')}"></div>
+ <div class="field"><label>Cierre de la 2.ª evaluación</label><input name="schedule-term-2" type="date" value="${E(d.schedule?.evaluation_ends?.[1]||'')}"></div>
+ <div class="field"><label>Cierre de la 3.ª evaluación</label><input name="schedule-term-3" type="date" value="${E(d.schedule?.evaluation_ends?.[2]||'')}"></div>
+ <div class="field"><label>Días no lectivos adicionales (uno por línea)</label><textarea name="schedule-extra-days" rows="2" placeholder="2027-02-08">${E((d.schedule?.extra_non_teaching_days||[]).join('\n'))}</textarea></div></div>
+ <div class="guide-calendar-details"><h3>Vacaciones y festivos del curso ${E(m.academic_year)}</h3>
+ <p class="small">Cada línea representa un periodo o día no lectivo. Puedes editar, añadir o eliminar fechas. Las propuestas de calendario son editables, pero debes contrastarlas con la normativa aplicable.</p>
+ <div class="formgrid"><div class="field"><label>Vacaciones (inicio;fin;motivo)</label><textarea name="schedule-vacations" rows="4" placeholder="2026-12-23;2027-01-08;Navidad">${E(calendarVacationLines(d.schedule))}</textarea></div>
+ <div class="field"><label>Festivos autonómicos, insulares y nacionales (fecha;motivo)</label><textarea name="schedule-regional-days" rows="4" placeholder="2026-10-12;Fiesta Nacional">${E(calendarHolidayLines(d.schedule))}</textarea></div>
+ <div class="field"><label>URL de la resolución de calendario escolar del curso y comunidad</label><input name="schedule-calendar-source" type="url" maxlength="800" value="${E(d.schedule?.calendar_source_url||'')}" placeholder="https://..."></div>
+ <div class="field"><label>Descripción y fecha de la fuente</label><input name="schedule-calendar-source-description" maxlength="700" value="${E(d.schedule?.calendar_source_description||'')}" placeholder="Resolución y correcciones aplicables"></div></div></div>
+ <div class="formgrid"><div class="field"><label>URL de la norma que fija las horas de este módulo</label>
+ <input type="url" name="schedule-hours-source" maxlength="800" value="${E(d.schedule?.hours_source_url||'')}" placeholder="https://www.boe.es/... o boletín autonómico"></div>
+ <div class="field"><label>Nombre y versión de la disposición horaria</label>
+ <input name="schedule-hours-description" maxlength="700" value="${E(d.schedule?.hours_source_description||'')}" placeholder="Anexo, resolución, fecha y modificaciones"></div></div>
+  <label class="guide-confirm"><input name="schedule-hours-confirmed" type="checkbox" ${d.schedule?.hours_confirmed?'checked':''}> Confirmo las horas totales y semanales tras comprobar el título, el curso y la distribución horaria que corresponde a mi módulo.</label>
+ <p class="small">Fuente del dato: ${E(d.schedule?.hours_source_description||'Entrada del docente sin referencia automática')} ${d.schedule?.hours_source_url?`· <a href="${E(d.schedule.hours_source_url)}" target="_blank" rel="noopener noreferrer">Ver disposición</a>`:''}</p>
+ <label class="guide-confirm"><input name="schedule-confirmed" type="checkbox" ${d.schedule?.calendar_confirmed?'checked':''}> He comprobado el calendario específico de mi centro y sus días no lectivos.</label>
+ <div class="actions"><button type="button" class="btn secondary" data-action="national-save-hours">Guardar horas contrastadas para reutilizarlas en el mismo curso</button>
+ <button type="button" class="btn secondary" data-action="national-save-calendar">Guardar calendario verificado para el mismo centro y curso</button>
+ ${S.nationalSources?.calendar_record?`<button type="button" class="btn mutedbtn" data-action="national-apply-calendar">Cargar calendario que ya está guardado para este centro</button>`:''}</div>
+ <p class="small">Las fichas guardadas identifican al docente como persona que las ha contrastado. Nunca se trasladan automáticamente a otro curso académico, comunidad o centro.</p>
+ </fieldset>
+ <fieldset class="guide-fieldset"><legend>Unidades por evaluación</legend>
+ <label class="guide-confirm"><input type="checkbox" name="guide-units-auto" ${d.units_mode!=='manual'?'checked':''}> Organización automática: una unidad por RA</label>
+ <div class="formgrid"><div class="field"><label>Número de unidades (modo personalizado)</label><input id="guide-unit-count" type="number" min="1" max="100" step="1" value="${E(d.units?.length||3)}"></div>
+ <div class="field"><label>Crear cuadrícula manual</label><button class="btn secondary" type="button" data-action="prepare-manual-units">Preparar unidades editables</button></div></div>
+ <div class="actions"><button class="btn secondary" type="button" data-action="prepare-propose-units">Proponer una unidad por RA</button>
+ <button class="btn secondary" type="button" data-action="prepare-enrich-units">Preparar instrumentos y recursos con IA</button></div>
+ ${S.unitProposal?`<section class="guide-ai-review"><h3>Propuesta de IA para las unidades</h3>
+ <p class="small">Las sugerencias se incorporan únicamente a instrumentos y recursos vacíos o todavía genéricos. Conservaremos lo que ya haya escrito el docente.</p>
+ <div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Unidad</th><th>Instrumentos propuestos</th><th>Recursos propuestos</th></tr></thead><tbody>
+ ${S.unitProposal.units.map(u=>`<tr><td>${E(u.code)}</td><td>${E(u.instruments)}</td><td>${E(u.resources)}</td></tr>`).join('')}</tbody></table></div>
+ <div class="actions"><button type="button" class="btn" data-action="prepare-accept-unit-ai">Aceptar sugerencias sin sobrescribir textos docentes</button>
+ <button type="button" class="btn mutedbtn" data-action="prepare-dismiss-unit-ai">Descartar sugerencias</button></div></section>`:''}
+ <p class="small">La propuesta se obtiene de los RA/CE confirmados. Revisa las horas asignadas: no cambia las ponderaciones ni instrumentos existentes.</p>
+ <div class="guide-units">${(d.units||[]).map((u,i)=>`<div class="guide-unit" data-unit-row="${i}">
+ <div class="formrow guide-unit-top"><strong>Unidad ${i+1}</strong><button type="button" class="btn smallbtn mutedbtn" data-action="prepare-remove-unit" data-index="${i}">Eliminar</button></div>
+ <div class="formgrid"><div class="field"><label>Código</label><input data-unit="code" maxlength="30" value="${E(u.code)}" required></div>
+ <div class="field"><label>Nombre de unidad</label><input data-unit="title" maxlength="220" value="${E(u.title)}" required></div>
+ <div class="field"><label>Evaluación</label><select data-unit="term">${[1,2,3].map(t=>`<option value="${t}" ${t===Number(u.term)?'selected':''}>${t}.ª evaluación</option>`).join('')}</select></div>
+ <div class="field"><label>Horas de la unidad</label><input data-unit="hours" type="number" min="0.5" max="1000" step="0.5" value="${E(u.hours)}" required></div></div>
+ <div class="formgrid"><div class="field"><label>Instrumentos de evaluación</label><textarea data-unit="instruments" rows="2" placeholder="Prueba práctica, portafolio…">${E(u.instruments||'')}</textarea></div>
+ <div class="field"><label>Recursos previstos</label><textarea data-unit="resources" rows="2" placeholder="Equipos, software, supuestos…">${E(u.resources||'')}</textarea></div></div>
+ <details><summary>CE asociados a esta unidad (${(u.criteria_codes||[]).length})</summary>
+ <div class="guide-ce-checks">${(info.criteria||[]).map(c=>`<label><input type="checkbox" data-unit-ce="${E(c.code)}" ${(u.criteria_codes||[]).includes(c.code)?'checked':''}> <b>${E(c.code)}</b> · ${E((c.description||'').slice(0,125))}</label>`).join('')||'<p class="hint warning">Primero incorpora RA/CE.</p>'}</div></details>
+ </div>`).join('')}</div>
+ <div class="actions"><button class="btn secondary" type="button" data-action="prepare-add-unit">+ Añadir unidad</button></div></fieldset>
+ <fieldset class="guide-fieldset"><legend>Formación en empresa u organismo equiparado (FEOE)</legend>
+ <p class="small">Marca los CE que se prevé trabajar en empresa. El intervalo del 10–20 % de criterios es una referencia editable de esta planificación, no una regla legal general; debe comprobarse también la distribución de RA del ciclo y el régimen de dual.</p>
+ <div class="formgrid"><div class="field"><label>Inicio previsto FEOE</label><input name="schedule-feoe-start" type="date" value="${E(d.schedule?.feoe_start||'')}"></div>
+ <div class="field"><label>Fin previsto FEOE</label><input name="schedule-feoe-end" type="date" value="${E(d.schedule?.feoe_end||'')}"></div>
+ <div class="field"><label>Horas semanales en el centro durante FEOE</label><input name="schedule-feoe-center-hours" type="number" min="0" max="40" step="0.5" value="${E(d.schedule?.feoe_center_hours_weekly??'')}" placeholder="Sin descontar hasta confirmar"></div>
+ <div class="field"><label>Porcentaje orientativo de CE para FEOE</label><input name="schedule-feoe-target" type="number" min="10" max="20" step="1" value="${E(d.schedule?.feoe_target_percent??15)}"></div></div>
+ <div class="actions"><button type="button" class="btn secondary" data-action="prepare-propose-feoe">Proponer CE para FEOE</button></div>
+ <div class="guide-ce-checks guide-feoe-checks">${(info.criteria||[]).map(c=>`<label><input type="checkbox" data-feoe-ce="${E(c.code)}" ${(d.schedule?.feoe_criteria_codes||[]).includes(c.code)?'checked':''}> <b>${E(c.code)}</b> · ${E((c.description||'').slice(0,130))}</label>`).join('')}</div>
+ <div class="guide-feoe-export panel"><h3>Programa formativo mínimo en empresa · Documento independiente</h3>
+ <p class="small">Se proponen tareas breves y comprensibles relacionadas con CE reales, y evidencias que debe observar la empresa. Puedes redactarlas de nuevo con IA, corregirlas y descargarlas en un documento aparte. Los CE complejos necesitan medios específicos y no deben darse por superados mediante tareas genéricas.</p>
+ <div class="actions"><button class="btn secondary" type="button" data-action="feoe-minimum-preview">Preparar propuesta mínima</button>
+ <button class="btn secondary" type="button" data-action="feoe-minimum-ai">Mejorar propuesta con IA</button></div>
+ ${renderFeoeMinimumPreview(info)}
+ <p class="small">Una vez guardada la propuesta, puedes descargar este documento sin descargar la programación completa.</p>
+ <div class="actions"><a class="btn secondary" download href="/api/programming-builder/${m.id}/feoe-minimum.docx">Descargar programa mínimo · Word</a>
+ <a class="btn secondary" download href="/api/programming-builder/${m.id}/feoe-minimum.pdf">Descargar programa mínimo · PDF</a></div>
+ <p class="small">El programa individual se acordará con la empresa y cumplirá los requisitos de la administración educativa competente. Esta propuesta pedagógica no sustituye el plan o trámite oficial de la comunidad.</p>
+ </div>
+ </fieldset>
+ <fieldset class="guide-fieldset"><legend>Actividades complementarias y extraescolares</legend>
+ <p class="small">Se proponen actividades contextualizadas, que el docente puede editar, eliminar o dejar sin fecha hasta que el centro las autorice.</p>
+ <div class="guide-activities">${(d.activities||[]).map((a,i)=>`<div class="guide-unit" data-activity-row="${i}"><div class="formrow guide-unit-top"><strong>Actividad ${i+1}</strong><button type="button" class="btn mutedbtn smallbtn" data-action="prepare-remove-activity" data-index="${i}">Eliminar</button></div>
+ <div class="formgrid"><div class="field"><label>Tipo</label><select data-activity="type"><option value="complementaria" ${a.type==='complementaria'?'selected':''}>Complementaria (horario lectivo)</option><option value="extraescolar" ${a.type==='extraescolar'?'selected':''}>Extraescolar</option></select></div>
+ <div class="field"><label>Nombre</label><input data-activity="title" value="${E(a.title)}" required></div>
+ <div class="field"><label>Fecha prevista</label><input data-activity="date" type="date" value="${E(a.date||'')}"></div>
+ <div class="field"><label>Unidad vinculada</label><input data-activity="unit_code" value="${E(a.unit_code||'')}" placeholder="UD01"></div>
+ <div class="field"><label>Objetivo/actividad</label><textarea data-activity="description" rows="2">${E(a.description||'')}</textarea></div>
+ <div class="field"><label>Recursos y organización</label><textarea data-activity="resources" rows="2">${E(a.resources||'')}</textarea></div></div></div>`).join('')}</div>
+ <button type="button" class="btn secondary" data-action="prepare-add-activity">+ Añadir actividad</button></fieldset>
+ ${guideField('enterprise','Plan de formación en empresa y coordinación','Registra los acuerdos del centro y las evidencias previstas; la propuesta no añade un peso extra a la nota.')}
+ ${guideField('extracurricular','Actividades complementarias y extraescolares previstas','Completa el plan de salidas, autorizaciones y relación con RA/CE.')}`;
+ case 5:return `<h2>6. Revisión del borrador</h2><p>EvalúaFP ha preparado la estructura del documento a partir de los campos cumplimentados y el currículo que hayas confirmado.</p>
+ <p class="hint warning"><strong>Documento de trabajo.</strong> Esta versión no constituye una programación oficialmente aprobada. Revisa su adecuación normativa y los acuerdos del departamento.</p>
+ <div class="guide-review-line"><b>RA y CE:</b> ${info.counts.ra} resultados y ${info.counts.ce} criterios · ${info.counts.units} unidades guardadas</div>
+ ${renderDiagnosis(info)}
+ ${renderCalendarSummary(info.calendar_plan)}
+ <p class="small">Los apartados identificados en la programación de referencia se han distribuido entre los pasos anteriores. Todos son editables y sus propuestas se etiquetan según su origen.</p>
+ ${guideField('observations','Observaciones finales de la programación','Anotaciones internas para su revisión institucional.')}
+ <div class="actions"><button class="btn secondary" data-action="prepare-finish" type="button">Guardar borrador</button></div>
+ <h3>Descargar borrador editable</h3><p class="small">Las exportaciones se generan desde el último borrador guardado; guarda las observaciones finales antes de descargarlas.</p>
+ <div class="actions"><a class="btn" href="/api/programming-builder/${m.id}/export.docx" download>Word (.docx)</a>
+ <a class="btn secondary" href="/api/programming-builder/${m.id}/export.pdf" download>PDF</a>
+ <a class="btn mutedbtn" href="/api/programming-builder/${m.id}/export.md" download>Markdown</a></div>
+ <h3>Descargar únicamente el programa formativo mínimo FEOE</h3><p class="small">Documento separado, editable y provisional, con criterios, tareas sencillas, evidencias y seguimiento. Usa primero «Preparar propuesta mínima» en el paso 5 si deseas revisar y guardar las tareas.</p>
+ <div class="actions"><a class="btn secondary" href="/api/programming-builder/${m.id}/feoe-minimum.docx" download>Programa FEOE en Word</a>
+ <a class="btn secondary" href="/api/programming-builder/${m.id}/feoe-minimum.pdf" download>Programa FEOE en PDF</a></div>`;
+ }
+ return '';
+}
+function renderFeoeMinimumPreview(info){
+ const p=S.feoeMinimumPreview;
+ if(!p||Number(p.module?.id)!==Number(S.moduleId))return '';
+ return `<section class="guide-feoe-preview"><div class="guide-review-line"><b>${E(p.count)} criterios de ${E(p.total_criteria)}</b> · ${fmtSchoolNumber(p.percentage)} % del módulo</div>
+ <p class="small">Origen: ${E(p.source)}. ${E(p.selection)}.</p>
+ ${(p.warnings||[]).length?`<details><summary>${p.warnings.length} advertencias y comprobaciones pendientes</summary><ul>${p.warnings.map(w=>`<li>${E(w)}</li>`).join('')}</ul></details>`:''}
+ <div class="guide-weight-scroll"><table class="guide-metrics-table guide-feoe-minimal"><thead><tr><th>RA / CE</th><th>Relación con el criterio oficial</th><th>Ejemplo de tarea sencilla (editable)</th><th>Evidencia observable (editable)</th><th>Apoyo (editable)</th></tr></thead>
+ <tbody>${p.rows.map((r,i)=>`<tr data-minimum-row="${i}"><td><b>${E(r.ra_code)} / ${E(r.criteria_code)}</b><div class="small">${E(r.fit)}</div></td>
+ <td>${E(r.description)}</td><td><textarea data-feoe-min="activity" rows="4" maxlength="1500">${E(r.activity)}</textarea></td>
+ <td><textarea data-feoe-min="evidence" rows="4" maxlength="1500">${E(r.evidence)}</textarea></td>
+ <td><textarea data-feoe-min="support" rows="4" maxlength="1000">${E(r.support)}</textarea></td></tr>`).join('')}</tbody></table></div>
+ <label class="guide-confirm"><input type="checkbox" id="feoe-minimum-confirm"> He revisado la relación entre las tareas y los CE y entiendo que deben concretarse con cada empresa.</label>
+ <div class="actions"><button type="button" class="btn" data-action="feoe-minimum-accept">Guardar programa FEOE revisado</button>
+ <button type="button" class="btn mutedbtn" data-action="feoe-minimum-discard">Descartar propuesta</button></div>
+ </section>`;
+}
+function collectFeoeMinimumFields(){
+ const p=S.feoeMinimumPreview;
+ if(!p)return;
+ document.querySelectorAll('[data-minimum-row]').forEach((tr,i)=>{
+  const row=p.rows[i];if(!row)return;
+  for(const k of ['activity','evidence','support']){
+   const el=tr.querySelector('[data-feoe-min="'+k+'"]');if(el)row[k]=el.value;
+  }
+ });
+}
+function fmtSchoolNumber(n){
+ const v=Number(n);
+ return Number.isFinite(v)?new Intl.NumberFormat('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2}).format(v):'Pendiente';
+}
+function fmtSchoolDate(iso){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(String(iso||'')))return 'Pendiente';
+ const [year,month,day]=iso.split('-');return `${day}/${month}/${year}`;
+}
+function monthGroups(weeks){
+ const groups=[];
+ for(const w of weeks){
+  const ym=String(w.start).slice(0,7);
+  if(groups.length&&groups[groups.length-1].code===ym)groups[groups.length-1].span++;
+  else{
+   const dt=new Date(`${ym}-01T12:00:00Z`);
+   const label=new Intl.DateTimeFormat('es-ES',{month:'long',year:'numeric',timeZone:'UTC'}).format(dt);
+   groups.push({code:ym,label,span:1});
+  }
+ }
+ return groups;
+}
+function renderCalendarSummary(plan){
+ if(!plan?.configured)return '<p class="hint warning">Falta configurar la temporalización.</p>';
+ const units=plan.units||[],weeks=plan.gantt_weeks||[];
+ const months=monthGroups(weeks).map(group=>`<th class="gantt-month" scope="colgroup" colspan="${group.span}">${E(group.label)}</th>`).join('');
+ const dateColumns=weeks.map(w=>`<th class="gantt-week" scope="col" title="Semana natural del ${fmtSchoolDate(w.start)} al ${fmtSchoolDate(w.end)}"><span>${E(fmtSchoolDate(w.start).slice(0,5))}</span><span>${E(fmtSchoolDate(w.end).slice(0,5))}</span></th>`).join('');
+ const body=units.map(u=>`<tr><th class="gantt-unit-col" scope="row">${E(u.code)}<span class="small">${E(u.title)}</span></th>
+ <td class="gantt-data-col">${fmtSchoolNumber(u.hours)} h</td><td class="gantt-data-col">${Number(u.term)}.ª</td>
+ ${weeks.map(w=>`<td class="${u.start&&u.end&&u.start<=w.end&&u.end>=w.start?'gantt-bar-term-'+u.term:''}" title="${E(u.code)} · ${E(u.title)} · ${fmtSchoolDate(u.start)} a ${fmtSchoolDate(u.end)} · semana del ${fmtSchoolDate(w.start)} al ${fmtSchoolDate(w.end)}"></td>`).join('')}</tr>`).join('');
+ const feoe=plan.feoe?.start&&plan.feoe?.end?`<tr><th class="gantt-unit-col" scope="row">FEOE<span class="small">Estancia en empresa</span></th><td class="gantt-data-col">—</td><td class="gantt-data-col">—</td>${weeks.map(w=>`<td class="${plan.feoe.start<=w.end&&plan.feoe.end>=w.start?'gantt-feoe':''}" title="FEOE · semana del ${fmtSchoolDate(w.start)} al ${fmtSchoolDate(w.end)}"></td>`).join('')}</tr>`:'';
+ return `<section class="guide-calendar-summary"><h3>Temporalización prevista</h3>
+ <table class="guide-metrics-table"><caption>Resumen de horas previstas y disponibles</caption><thead><tr><th>Indicador</th><th>Valor</th><th>Unidad</th></tr></thead><tbody>
+ <tr><td>Horas semanales del módulo</td><td>${fmtSchoolNumber(plan.config.weekly_hours)}</td><td>h/semana</td></tr>
+ <tr><td>Horas lectivas disponibles</td><td>${fmtSchoolNumber(plan.capacity)}</td><td>h</td></tr>
+ <tr><td>Horas planificadas en unidades</td><td>${fmtSchoolNumber(plan.planned)}</td><td>h</td></tr>
+ <tr><td>CE seleccionados para FEOE</td><td>${E(plan.feoe?.count||0)} de ${E(plan.feoe?.criteria_total||0)}</td><td>${fmtSchoolNumber(plan.feoe?.percent||0)} %</td></tr></tbody></table>
+ <table class="guide-metrics-table"><caption>Distribución de las unidades por evaluación</caption><thead><tr><th>Evaluación</th><th>Horas disponibles</th><th>Horas programadas</th></tr></thead><tbody>${(plan.terms||[]).map(t=>`<tr><td>${Number(t.term)}.ª evaluación</td><td>${fmtSchoolNumber(t.capacity)} h</td><td>${fmtSchoolNumber(t.planned)} h</td></tr>`).join('')}</tbody></table>
+ ${plan.warnings?.length?`<div class="hint warning"><strong>Alertas del calendario</strong><ul>${plan.warnings.map(x=>`<li>${E(x)}</li>`).join('')}</ul></div>`:''}
+ <h3>Diagrama de Gantt · escala semanal</h3>
+ <p class="small"><strong>Cómo leer el encabezado:</strong> la fila superior indica el <strong>mes y año</strong>; cada columna inferior corresponde a <strong>una semana natural</strong>. La primera fecha es el inicio y la segunda el final de esa semana (formato día/mes). <strong>No son horas.</strong> Las horas se muestran a la izquierda, por unidad.</p>
+ <div class="guide-gantt-scroller"><table class="guide-gantt"><caption>Calendario semanal de las unidades didácticas y FEOE; fechas de inicio y final de cada semana</caption>
+ <thead><tr><th class="gantt-unit-col" rowspan="2" scope="col">Unidad didáctica</th><th rowspan="2" scope="col">Horas (h)</th><th rowspan="2" scope="col">Evaluación</th>${months}</tr><tr>${dateColumns}</tr></thead><tbody>${body}${feoe}</tbody></table></div>
+ <div class="guide-gantt-legend">Azul: 1.ª evaluación · Verde azulado: 2.ª · Violeta: 3.ª · Verde: periodo previsto de FEOE</div>
+ <p class="small"><strong>Importante:</strong> una barra representa el intervalo previsto, no el número de horas impartidas cada semana. El Gantt se recalcula al guardar cambios de horario, fechas, festivos y unidades.</p></section>`;
+}
+function renderDiagnosis(info){
+ const er=info.errors||[],wa=info.warnings||[];
+ return `<div class="guide-diagnosis">
+ <h3>Comprobación curricular</h3>
+ ${!er.length?'<div class="guide-ok">✓ No faltan RA/CE para comenzar a preparar evaluaciones.</div>':`<div class="hint danger-note"><b>Debe revisar:</b><ul>${er.map(x=>`<li>${E(x)}</li>`).join('')}</ul></div>`}
+ ${wa.length?`<details><summary>${wa.length} recomendaciones o cuestiones pendientes</summary><ul>${wa.map(x=>`<li>${E(x)}</li>`).join('')}</ul></details>`:'<p class="small">No se han detectado otras cuestiones pendientes con las comprobaciones automáticas.</p>'}
+ </div>`;
+}
+const EXTRA_IMPORT_FIELDS=[
+ ['justification','Justificación y principios'],['center_characteristics','Centro educativo'],
+ ['student_characteristics','Alumnado'],['environment_context','Entorno productivo'],
+ ['identification_data','Identificación'],['qualifications','Cualificaciones'],
+ ['contents','Contenidos'],['learning_activities','Distribución de actividades'],
+ ['interdisciplinarity','Interdisciplinariedad'],['extracurricular','Salidas y actividades extraescolares'],
+ ['assessment_sessions','Sesiones de evaluación'],['grading','Calificación'],
+ ['promotion','Promoción'],['attendance','Asistencia'],
+ ['extraordinary_assessment','Evaluación extraordinaria']];
+function renderImportPreview(data){
+ const fields=Object.entries(data.fields||{});
+ const stat=data.statistics||{};const mh=data.proposed_hours||{};
+ const unknown=(data.sections||[]).filter(s=>!s.field||!data.field_labels[s.field]);
+ return `<section class="panel import-panel"><h2>Importación completa: ${E(data.filename)}</h2>
+ <div class="hint"><b>Extracción local (sin enviar el documento a una IA).</b> El texto original permanece guardado. La legislación, las horas y las calificaciones del documento no han sido verificadas oficialmente.</div>
+ <div class="import-stats"><div><b>${stat.pages||'—'}</b><span>Páginas</span></div><div><b>${stat.sections_detected||0}</b><span>Apartados detectados</span></div><div><b>${stat.fields_identified||0}</b><span>Campos recuperados</span></div><div><b>${stat.additional_sections||0}</b><span>Otros apartados</span></div></div>
+ <p>Revisa las propuestas. Marca lo que quieras incorporar al borrador. <strong>Los campos que ya tenían contenido están desmarcados</strong> para conservar tus cambios. Puedes editar cualquier texto antes de incorporarlo.</p>
+ <form id="guided-content-import"><div class="import-fields">${fields.map(([key,value])=>{
+    const existing=Boolean(data.existing_fields?.[key]);
+    return `<details class="import-field"><summary><label class="import-select" onclick="event.stopPropagation()"><input type="checkbox" data-import-field="${E(key)}" ${existing?'':'checked'}> Incorporar</label><strong>${E(data.field_labels[key]||key)}</strong><span>${existing?'Ya existe: no sustituir salvo confirmación':'Recuperado del documento'}</span></summary>
+    <div class="field"><label>Texto extraído (puedes corregirlo)</label><textarea data-import-edit="${E(key)}" rows="8" maxlength="12000">${E(value)}</textarea></div></details>`;
+ }).join('')}</div>
+ <details class="import-field"><summary><strong>Horas identificadas en el documento</strong><span>Confirmación opcional</span></summary>
+ ${mh.total_hours!=null&&mh.weekly_hours!=null?`<p>El documento menciona <b>${mh.total_hours.toFixed(2)} horas totales</b> y <b>${mh.weekly_hours.toFixed(2)} horas semanales</b>. Estos valores <strong>no están contrastados</strong> con el currículo vigente.</p><label class="checkbox-card"><input type="checkbox" name="accept_document_hours" value="1"> Usar estas horas provisionales en mi planificación (no son una verificación normativa)</label>`:
+ '<p>No se han encontrado horas totales y semanales inequívocas. Confírmalas desde la ficha del módulo o la normativa oficial.</p>'}</details>
+ <details class="import-field"><summary><strong>Unidades didácticas y evaluación</strong><span>${data.proposed_units?.length||0} unidades detectadas</span></summary>
+ ${(data.proposed_units||[]).length?`<p>Se identificaron títulos y evaluación. <b>No se inventan las horas</b> que no constan en la tabla. Puedes indicar las horas para importar estas unidades.</p><label class="checkbox-card"><input type="checkbox" name="accept_units" value="1"> Incorporar las unidades con las horas que indique</label>
+ <div class="import-units"><table><thead><tr><th>Unidad</th><th>Título recuperado</th><th>Evaluación</th><th>Horas por asignar</th></tr></thead><tbody>${data.proposed_units.map(u=>`<tr><td>${E(u.code)}</td><td>${E(u.title)}</td><td>${u.term}ª</td><td><input type="number" data-import-unit-hours min="0.01" max="1000" step="0.01" placeholder="0,00 h" aria-label="Horas de ${E(u.code)}"></td></tr>`).join('')}</tbody></table></div>`:'<p>La distribución temporal queda recogida en los apartados originales importados. No hay filas de unidades suficientemente claras para automatizar su alta.</p>'}</details>
+ <details class="import-field"><summary><strong>Criterios compartidos con la FEOE</strong><span>${data.proposed_feoe_criteria?.length||0} CE detectados</span></summary>
+ ${(data.proposed_feoe_criteria||[]).length?`<p>El documento señala estos criterios para la formación en empresa. Verifícalos con el plan de formación: son propuestas documentales, no una validación normativa.</p>
+ <div class="guide-ce-checks">${data.proposed_feoe_criteria.map(item=>`<div><b>${E(item.code)}</b> · Página ${item.page}</div>`).join('')}</div>
+ <label class="checkbox-card"><input type="checkbox" name="accept_feoe_criteria" value="1"> Utilizar estos CE en la planificación FEOE, sustituyendo la selección actual.</label>`:
+ '<p>No se ha identificado una lista inequívoca de CE relacionados con FEOE.</p>'}</details>
+ <details class="import-field"><summary><strong>Otros apartados conservados</strong><span>${unknown.length} apartados no clasificados</span></summary>
+ <p>También se conserva el texto de los epígrafes no identificados, para que no se pierda ninguna parte.</p>
+ ${unknown.map(sec=>`<div class="guide-review-line"><b>${E(sec.title)}</b> · Página ${sec.page_start}<p>${E(sec.body.slice(0,420))}${sec.body.length>420?'…':''}</p></div>`).join('')}</details>
+ <label class="checkbox-card"><input type="checkbox" name="keep_source_sections" value="1" checked> Conservar los apartados completos con las páginas de procedencia como anexo y copia consultable.</label>
+ <div class="hint warning">Los RA/CE requieren una revisión curricular independiente: tras guardar, utiliza «RA y CE (IA)» o la consulta oficial, y valida los resultados antes de aplicarlos.</div>
+ <div class="actions"><button class="btn" type="submit">Guardar los apartados seleccionados</button><button class="btn mutedbtn" type="button" data-action="discard-import-preview">Volver sin aplicar cambios</button></div>
+ </form></section>`;
+}
+function guidedProposalMarkup(){
+ const p=S.proposal;
+ if(!p)return '';
+ if(!Array.isArray(p.outcomes))return `<section class="hint warning">No se han recuperado RA y CE. Revise el documento y la fuente.</section>`;
+ return `<section class="panel guide-proposal"><h2>Revisa el currículo propuesto</h2><p>Corrige los enunciados y las ponderaciones antes de incorporarlos. Los campos sin peso expreso recibirán la ponderación automática por CE, salvo que ya exista una decisión docente anterior.</p>
+ ${(p.warnings||[]).length?`<div class="hint warning"><b>Advertencias:</b><ul>${p.warnings.map(w=>`<li>${E(w)}</li>`).join('')}</ul></div>`:''}
+ <form id="guided-review">${p.outcomes.map((ra,i)=>`<section class="guide-ra" data-guide-ra="${i}">
+ <div class="formgrid"><div class="field"><label>Código RA</label><input name="ra-code" required value="${E(ra.code)}"></div>
+ <div class="field"><label>Peso sobre el módulo (%)</label><input name="ra-weight" type="number" min="0" max="100" step="0.01" value="${E(ra.weight??'')}" placeholder="Automático si se deja vacío"></div></div>
+ <div class="field"><label>Descripción del RA</label><textarea name="ra-description" required rows="2">${E(ra.description)}</textarea></div>
+ ${(ra.criteria||[]).map((ce,j)=>`<div class="guide-ce" data-guide-ce="${j}">
+ <div class="formgrid"><div class="field"><label>Código CE</label><input name="ce-code" required value="${E(ce.code)}"></div>
+ <div class="field"><label>Peso dentro del RA (%)</label><input name="ce-weight" type="number" min="0" max="100" step="0.01" value="${E(ce.weight??'')}" placeholder="Automático"></div></div>
+ <div class="field"><label>Descripción del CE</label><textarea name="ce-description" rows="2" required>${E(ce.description)}</textarea></div>
+ </div>`).join('')}</section>`).join('')}
+ <label class="checkbox-card"><input type="checkbox" name="teacher_confirmed" required> <span>He contrastado el currículo con la programación o fuente oficial y confirmo los RA y CE que se guardarán.</span></label>
+ <div class="actions"><button class="btn" type="submit">Confirmar y utilizar este currículo</button>
+ <button class="btn mutedbtn" type="button" data-action="prepare-discard-proposal">Descartar propuesta</button></div></form></section>`;
+}
+function guidedReadProposal(form){
+ return [...form.querySelectorAll('[data-guide-ra]')].map(box=>({
+   code:box.querySelector('[name=ra-code]').value.trim(),description:box.querySelector('[name=ra-description]').value.trim(),
+   weight:box.querySelector('[name=ra-weight]').value||null,
+   criteria:[...box.querySelectorAll('[data-guide-ce]')].map(ce=>({
+     code:ce.querySelector('[name=ce-code]').value.trim(),description:ce.querySelector('[name=ce-description]').value.trim(),
+     weight:ce.querySelector('[name=ce-weight]').value||null
+   }))
+ }));
+}
+async function viewPrepare(){
+ await listModules();
+ if(!S.moduleId||!S.modules.some(x=>Number(x.id)===Number(S.moduleId)))S.moduleId=S.modules[0]?.id||null;
+ if(!S.moduleId||S.creatingModule){$('#main').innerHTML=`<div class="welcome-card"><p class="welcome-kicker">PASO INICIAL</p><h2>Prepara tu primer módulo</h2>
+ <p>Solo necesitamos los datos básicos. Después podrás incorporar una programación existente, crear un borrador o configurar la evaluación.</p></div>
+ <section class="panel"><h2>Datos del módulo profesional</h2><form id="prepare-create" class="formgrid">
+ <div class="field"><label>Curso académico</label><input name="academic_year" required value="2026-2027"></div>
+ <div class="field"><label>Comunidad autónoma / ámbito educativo</label><select name="territory" required>${territoryOptions('')}</select></div>
+ <div class="field"><label>Ciclo formativo</label><input name="cycle" required placeholder="CFGM Gestión Administrativa"></div>
+ <div class="field"><label>Nombre del módulo</label><input name="name" required placeholder="Técnica Contable"></div>
+ <div class="field"><label>Grupo (opcional)</label><input name="group_name" placeholder="1.º A"></div>
+ <button class="btn" type="submit">Crear módulo y continuar</button></form></section>`;return;}
+ const info=await API('/api/programming-builder/'+Number(S.moduleId));S.prepareInfo=info;
+ if(S.preparePath==='create'&&[1,4].includes(S.prepareStep)){
+   S.nationalSources=await API('/api/national/sources?module_id='+Number(S.moduleId));
+ }
+ if(S.preparePath==='create'&&S.prepareStep===4){
+    const region=S.wizardDraft?.region||info.draft.region;
+    S.calendarInfo=await API('/api/territories/calendar?region='+encodeURIComponent(region)+'&academic_year='+encodeURIComponent(info.module.academic_year));
+ }
+ if(!S.wizardDraft)S.wizardDraft=JSON.parse(JSON.stringify(info.draft));
+ const moduleSelector=`<section class="guide-context"><div class="field"><label>Módulo que estás preparando</label>
+ <select id="prepare-module">${opt(S.modules,S.moduleId,m=>m.name+' · '+m.academic_year)}</select></div>
+ <button type="button" class="btn secondary" data-action="prepare-new-module">+ Nuevo módulo</button>
+ <span class="badge">${info.counts.ra} RA · ${info.counts.ce} CE</span></section>`;
+ if(!S.preparePath){
+ const choices=[
+ ['import','file-up','Ya tengo una programación','Recuperar todo lo aprovechable: normativa, metodología, evaluación, unidades, recursos, actividades, horas y currículo.'],
+ ['create','book-open','Crear mi programación','Redactar un borrador editable utilizando el currículo confirmado.'],
+ ['evaluation','list-checks','Solo configurar la evaluación','Preparar RA, CE y criterios para usar pruebas y calificaciones, sin generar una programación completa.']];
+ $('#main').innerHTML=`${moduleSelector}<div class="welcome-card"><p class="welcome-kicker">PREPARACIÓN DE MÓDULOS</p>
+ <h2>¿Cómo quieres empezar?</h2><p>Elige la opción que más se ajuste a tu situación. Puedes volver y cambiarla cuando lo necesites.</p></div>
+ <div class="guide-choices">${choices.map(([key,icon,title,description])=>`<button class="guide-choice" type="button" data-action="prepare-select-path" data-path="${key}">
+ <strong>${E(title)}</strong><span>${E(description)}</span><b>Continuar →</b></button>`).join('')}</div>
+ ${renderDiagnosis(info)}${info.updated_at?`<section class="panel"><h2>Borrador guardado</h2><p>Última actualización: ${E(info.updated_at)}</p>
+ <button type="button" class="btn secondary" data-action="prepare-wizard-open">Editar el borrador</button></section>`:''}
+ <div class="actions"><button class="btn mutedbtn" data-page="programaciones">Edición manual de RA y CE (avanzado)</button></div>`;return;
+ }
+ const back=`<button class="btn mutedbtn" type="button" data-action="prepare-overview">← Cambiar de opción</button>`;
+ if(S.importPreview){$('#main').innerHTML=moduleSelector+`<div class="actions">${back}</div>`+renderImportPreview(S.importPreview);return;}
+ if(S.proposal){$('#main').innerHTML=moduleSelector+`<div class="actions">${back}</div>`+guidedProposalMarkup();return;}
+ if(S.preparePath==='import'){
+ const moduleDetail=await API('/api/modules/'+Number(S.moduleId));
+ $('#main').innerHTML=`${moduleSelector}<div class="actions">${back}</div><section class="panel"><h2>Importa tu programación actual</h2>
+ <p>No es necesario utilizar una plantilla específica. EvalúaFP conservará el original y te propondrá los RA y CE que pueda acreditar mediante su texto.</p>
+ <form id="guided-upload"><input type="hidden" name="module_id" value="${Number(S.moduleId)}"><div class="field"><label>Documento (PDF, DOCX, TXT o MD)</label>
+ <input type="file" accept=".pdf,.docx,.txt,.md" name="document" required></div><div class="actions"><button class="btn" type="submit">Guardar documento</button></div></form></section>
+ ${curriculumReviewPanel()}
+ <section class="panel"><h2>Programaciones guardadas</h2>${moduleDetail.programmings?.length?moduleDetail.programmings.map(p=>`<div class="guide-document">
+ <span><b>${E(p.filename)}</b><small>${p.text_length} caracteres extraídos</small></span>
+ <div class="actions"><button class="btn secondary smallbtn" type="button" data-action="review-all-program" data-id="${p.id}" ${p.text_length?'':'disabled'}>Revisar TODA la programación</button><button class="btn mutedbtn smallbtn" type="button" data-action="guided-analyze" data-id="${p.id}" ${p.text_length?'':'disabled'}>RA y CE (IA)</button></div></div>`).join(''):empty('Aún no has importado ninguna programación.')}
+ <p class="small">Las propuestas de IA se revisan antes de guardarse. Los PDF escaneados sin texto seleccionable requieren OCR previo.</p></section>
+ ${renderDiagnosis(info)}<div class="actions"><button class="btn secondary" data-action="prepare-select-path" data-path="create">Continuar al borrador editable →</button></div>`;return;
+ }
+ if(!info.counts.ce){
+ $('#main').innerHTML=`${moduleSelector}<div class="actions">${back}</div><section class="panel"><h2>Primero, incorpora el currículo de tu módulo</h2>
+ <p>Para evitar RA y CE inventados, EvalúaFP necesita los enunciados desde una fuente comprobable.</p>
+ ${curriculumReviewPanel()}
+ ${boeDiscoveryPanel()}
+ <div class="field"><label>Identificador del BOE (si lo conoces)</label><input id="guide-boe" placeholder="BOE-A-AAAA-NNN" value="${E(S.boeSelectedId||'')}"></div>
+ <div class="actions"><button class="btn" type="button" data-action="guided-boe">Consultar RA y CE en el BOE</button>
+ <button class="btn secondary" data-action="prepare-select-path" data-path="import">Importar una programación existente</button>
+ <button class="btn mutedbtn" data-page="programaciones">Introducir RA/CE manualmente</button></div>
+ <p class="hint warning">Comprueba la correspondencia del título, módulo, curso y normas autonómicas antes de aprobar cualquier propuesta.</p></section>`;return;
+ }
+ if(S.preparePath==='create'&&S.autoProposedModuleId!==Number(S.moduleId)){
+   S.autoProposedModuleId=Number(S.moduleId);
+   try{
+     const result=await API('/api/programming-builder/propose','POST',{
+         module_id:Number(S.moduleId),region:S.wizardDraft.region||'Canarias',mode:'base'});
+     applyAssistantFields(result,'base');
+   }catch(err){S.autoProposedModuleId=null;console.warn('No se ha podido rellenar el borrador local:',err);}
+ }
+ if(S.preparePath==='evaluation'){
+   $('#main').innerHTML=`${moduleSelector}<div class="actions">${back}</div><section class="panel">
+   <h2>Tu evaluación, preparada en tres pasos</h2>
+   <p>El currículo confirmado del módulo tiene <b>${info.counts.ra} RA</b> y <b>${info.counts.ce} CE</b>. Puedes utilizarlo sin generar otra programación completa.</p>
+   ${renderDiagnosis(info)}
+   <form id="prepare-minimum"><div class="field"><label>¿Cómo se evaluará el módulo? (opcional)</label>
+   <textarea name="assessment" rows="3" placeholder="Instrumentos, notas, criterios de superación...">${E(S.wizardDraft.assessment||'')}</textarea></div>
+   <div class="field"><label>Recuperación (opcional)</label><textarea name="recovery" rows="2">${E(S.wizardDraft.recovery||'')}</textarea></div>
+   <div class="actions"><button class="btn secondary" type="submit">Guardar configuración básica</button></div></form>
+   <div class="guide-choices" style="margin-top:18px"><button type="button" class="guide-choice" data-page="examenes"><strong>Crear un examen</strong><span>Genera pruebas y rúbricas vinculadas a CE.</span><b>Ir a exámenes →</b></button>
+   <button type="button" class="guide-choice" data-page="evaluacion"><strong>Configurar el cuaderno</strong><span>Instrumentos, evidencias, ponderaciones y notas.</span><b>Ir a evaluación →</b></button></div>
+   <p class="small">Las ponderaciones específicas, los instrumentos de calificación y el tratamiento de empresa se confirman en «Evaluación».</p></section>`;return;
+ }
+ const steps=GUIDE_STEPS.map((name,i)=>`<span class="guide-step ${i===S.prepareStep?'current':''} ${i<S.prepareStep?'done':''}">${i+1}. ${E(name)}</span>`).join('');
+ $('#main').innerHTML=`${moduleSelector}<div class="actions">${back}</div><div class="guide-steps">${steps}</div>
+ <section class="panel"><form id="prepare-wizard-form">${aiToolbar()}${aiPreviewPanel()}${wizardStepMarkup(S.prepareStep,info)}
+ <div class="actions guide-wizard-actions">${S.prepareStep>0?'<button type="button" class="btn secondary" data-action="prepare-wizard-back">← Anterior</button>':''}
+ ${S.prepareStep<5?'<button class="btn" type="submit">Guardar y continuar →</button>':''}</div></form></section>${S.prepareStep===1?curriculumReviewPanel():''}`;
+}
+function collectWizardFields(){
+ const form=$('#prepare-wizard-form');if(!form||!S.wizardDraft)return;
+ const previousRegion=String(S.wizardDraft.region||'Canarias');
+ S.wizardDraft.assistant_meta=S.wizardDraft.assistant_meta||{};
+ for(const key of WD_FIELDS){const el=form.elements[key];if(el){
+    const next=String(el.value||'');const old=String(S.wizardDraft[key]||'');
+    if(old!==next)S.wizardDraft.assistant_meta[key]={origin:'Docente',teacher_edited:true};
+    S.wizardDraft[key]=next;
+ }}
+ // La carga horaria de una comunidad no se traslada a otra al cambiar el ámbito.
+ if(previousRegion!==String(S.wizardDraft.region||'Canarias')){
+   const cfg=S.wizardDraft.schedule||{};
+   Object.assign(cfg,{region:S.wizardDraft.region,island:'',municipality:'',
+    calendar_confirmed:false,calendar_profile_id:'',calendar_source_url:'',
+    calendar_source_description:'',calendar_academic_year:'',
+    start_date:'',end_date:'',evaluation_ends:['','',''],
+    vacation_periods:[],regional_non_teaching_days:[],extra_non_teaching_days:[],
+    hours_confirmed:false,weekly_hours:0,total_hours:0,weekday_hours:[0,0,0,0,0],
+    hours_source_url:'',hours_source_description:'Pendiente de consultar fuente horaria del territorio seleccionado'});
+   S.wizardDraft.curriculum_confirmed=false;
+   S.wizardDraft.schedule=cfg;
+ }
+ if(S.prepareStep===1){S.wizardDraft.curriculum_confirmed=Boolean(form.elements['curriculum-confirmed']?.checked);}
+ if(S.prepareStep===4){
+ S.wizardDraft.units=[...form.querySelectorAll('[data-unit-row]')].map(box=>({
+  code:box.querySelector('[data-unit=code]').value,title:box.querySelector('[data-unit=title]').value,
+  term:Number(box.querySelector('[data-unit=term]').value),hours:Number(box.querySelector('[data-unit=hours]').value),
+  criteria_codes:[...box.querySelectorAll('input[data-unit-ce]:checked')].map(el=>el.dataset.unitCe),
+  instruments:box.querySelector('[data-unit=instruments]')?.value||'',resources:box.querySelector('[data-unit=resources]')?.value||''
+ }));
+ const cfg=S.wizardDraft.schedule||{};
+ const field=k=>form.elements[k]?.value||'';
+ const previousHours=[Number(cfg.weekly_hours||0),Number(cfg.total_hours||0)];
+ cfg.weekly_hours=Number(field('schedule-weekly-hours'));
+ cfg.region=S.wizardDraft.region||'Canarias';
+ S.wizardDraft.units_mode=form.elements['guide-units-auto']?.checked?'auto':'manual';
+ cfg.hours_confirmed=Boolean(form.elements['schedule-hours-confirmed']?.checked);
+ cfg.total_hours=Number(field('schedule-total-hours')||0);
+ const enteredHourUrl=field('schedule-hours-source').trim();
+ const enteredHourDescription=field('schedule-hours-description').trim();
+ if(previousHours.some((v,i)=>Math.abs(v-[cfg.weekly_hours,cfg.total_hours][i])>0.001)){
+   cfg.hours_source_description=enteredHourDescription||'Horario introducido por el docente; pendiente de contrastar';
+   cfg.hours_source_url=enteredHourUrl;
+ }
+ cfg.hours_source_url=enteredHourUrl;cfg.hours_source_description=enteredHourDescription;
+ cfg.start_date=field('schedule-start-date');cfg.end_date=field('schedule-end-date');
+ cfg.island=field('schedule-island');cfg.municipality=field('schedule-municipality');
+ cfg.weekday_hours=[...form.querySelectorAll('[data-weekday]')].map(x=>Number(x.value||0));
+ cfg.evaluation_ends=[1,2,3].map(i=>field('schedule-term-'+i));
+ cfg.extra_non_teaching_days=field('schedule-extra-days').split(/[\s,;]+/).filter(Boolean);
+ cfg.vacation_periods=readVacationLines(field('schedule-vacations'));
+ cfg.regional_non_teaching_days=readHolidayLines(field('schedule-regional-days'));
+ cfg.calendar_source_url=field('schedule-calendar-source').trim();
+ cfg.calendar_source_description=field('schedule-calendar-source-description').trim();
+ cfg.calendar_confirmed=Boolean(form.elements['schedule-confirmed']?.checked);
+ cfg.feoe_start=field('schedule-feoe-start');cfg.feoe_end=field('schedule-feoe-end');
+ cfg.feoe_center_hours_weekly=field('schedule-feoe-center-hours')===''?null:Number(field('schedule-feoe-center-hours'));
+ cfg.feoe_target_percent=Number(field('schedule-feoe-target')||15);
+ cfg.feoe_criteria_codes=[...form.querySelectorAll('input[data-feoe-ce]:checked')].map(x=>x.dataset.feoeCe);
+ S.wizardDraft.schedule=cfg;
+ S.wizardDraft.activities=[...form.querySelectorAll('[data-activity-row]')].map(box=>Object.fromEntries(
+ ['type','title','date','unit_code','description','resources'].map(k=>[k,box.querySelector('[data-activity='+k+']')?.value||''])));
+ }
+}
+async function saveWizardPage(){
+ collectWizardFields();
+ if(S.prepareStep===4&&S.wizardDraft.units.some(u=>!u.code||!u.title||!Number.isFinite(u.hours)||u.hours<=0)){
+  toast('Complete el código, el nombre y las horas de cada unidad.',true);return false;
+ }
+ S.wizardDraft.source_type=S.preparePath==='evaluation'?'evaluation':'create';
+ const result=await busy(()=>API('/api/programming-builder/save','POST',{
+  module_id:Number(S.moduleId),draft:S.wizardDraft}),'Borrador guardado localmente.');
+ return !!result;
+}
+
 async function viewPrograms(){
  await listModules();
  if(S.moduleId && !S.modules.some(x=>x.id===Number(S.moduleId)))S.moduleId=null;
@@ -117,6 +813,7 @@ async function viewPrograms(){
  $('#main').innerHTML=`${intro('Importe la programación en PDF, DOCX o texto. Los CE sin peso indicado se ponderan por igual y cada RA recibe un peso proporcional al número de CE; las ponderaciones expresas se respetan y pueden editarse.')}
  <div class="panel"><h2>Nuevo módulo formativo</h2><form id="create-module" class="formgrid">
  <div class="field"><label>Curso académico</label><input required name="academic_year" value="2026-2027" placeholder="2026-2027"></div>
+ <div class="field"><label>Comunidad autónoma / ámbito educativo</label><select name="territory" required>${territoryOptions('')}</select></div>
  <div class="field"><label>Ciclo formativo</label><input required name="cycle" placeholder="CFGM Gestión Administrativa"></div>
  <div class="field"><label>Módulo profesional</label><input required name="name" placeholder="Técnica Contable"></div>
  <div class="field"><label>Grupo</label><input name="group_name" placeholder="1.º A"></div>
@@ -173,13 +870,42 @@ function renderModule(d){const {module:m,outcomes,criteria,students,programmings
  <div class="field"><label>Descripción del criterio</label><textarea required name="description"></textarea></div>
  <button class="btn secondary" type="submit" ${!outcomes.length?'disabled':''}>Guardar CE</button></form></div></section>`;
 }
+function quickExamMarkup(d){
+ if(!d?.criteria?.length)return `<section class="panel"><h2>Antes de crear una prueba</h2>
+ <p>Necesitas incorporar y confirmar al menos un criterio de evaluación.</p><button class="btn" data-page="preparar" type="button">Preparar módulo</button></section>`;
+ const raOptions=d.outcomes.map(r=>`<div class="quick-ra"><label class="checkbox-card"><input class="ra-checkbox" type="checkbox" data-ra="${r.id}">
+ <span><strong>${E(r.code)} · ${E(r.description)}</strong><small>Seleccionar todos los criterios de este RA</small></span></label>
+ <details><summary>Elegir criterios de ${E(r.code)}</summary>
+ <div class="quick-ce">${d.criteria.filter(c=>c.outcome_id===r.id).map(c=>`<label class="checkbox-card"><input type="checkbox" name="criteria_ids" data-parent="${r.id}" value="${c.id}">
+ <span><b>${E(c.code)}</b> · ${E(c.description)}</span></label>`).join('')}</div></details></div>`).join('');
+ return `<section class="panel quick-exam"><div class="subhead"><h2>Crear un examen en tres decisiones</h2><span class="badge">Asistente sencillo</span></div>
+ <p class="small">1. Ponle título. 2. Elige tipo y preguntas. 3. Marca qué RA o CE quieres evaluar.</p>
+ <form id="generate-exam-quick">
+ <div class="formgrid"><div class="field"><label>Módulo</label><select name="module_id" id="quick-exam-module">${opt(S.modules,S.examModuleId,m=>m.name+' · '+m.academic_year)}</select></div>
+ <div class="field"><label>Título de la prueba</label><input name="title" required placeholder="Prueba de la unidad 2"></div>
+ <div class="field"><label>Tipo de examen</label><select name="kind"><option value="desarrollo">Preguntas de desarrollo</option>
+ <option value="test">Tipo test</option><option value="mixto">Mixto</option><option value="problemas">Problemas prácticos</option></select></div>
+ <div class="field"><label>Número de preguntas</label><input type="number" name="question_count" min="1" max="30" value="5" required></div></div>
+ <input type="hidden" name="programming_id" value="${d.programmings?.[0]?.id||''}">
+ <input type="hidden" name="difficulty" value="medio"><input type="hidden" name="model_count" value="1">
+ <input type="hidden" name="problem_count" value="0"><input type="hidden" name="center_name" value="">
+ <input type="hidden" name="exam_date" value=""><input type="hidden" name="duration_minutes" value="60">
+ <input type="hidden" name="total_points" value="10"><input type="hidden" name="instructions" value="">
+ <h3>Resultados y criterios que deseas evaluar</h3><div class="quick-criteria">${raOptions}</div>
+ <div class="actions"><button class="btn" type="submit">Generar examen con IA</button></div>
+ <p class="small">La generación requiere una API de IA configurada. La prueba podrá revisarse y descargarse antes de utilizarla.</p>
+ </form></section>`;
+}
+
 async function viewExams(){
  await Promise.all([listModules(),listExams()]);
  if(!S.examModuleId&&S.modules.length)S.examModuleId=S.modules[0].id;
  const d=S.examModuleId?await API('/api/modules/'+S.examModuleId):null;
  const selected=S.examId?await API('/api/exams/'+S.examId).catch(()=>null):null;
  S.examDetails=selected;
- $('#main').innerHTML=`${intro('Seleccione los CE o todos los CE de los RA que desea evaluar. Los puntos de cada pregunta se asignarán de forma proporcional al peso del RA y del criterio en la programación.')}
+ $('#main').innerHTML=`${intro('Elige los criterios que deseas evaluar y genera tu prueba. Puedes utilizar el asistente sencillo o abrir las opciones detalladas.')}
+ ${!S.advanced?quickExamMarkup(d):''}
+ <details class="advanced-exam" ${S.advanced?'open':''}><summary>${S.advanced?'Configuración detallada de la prueba':'Más opciones: dificultad, modelos, problemas y rúbricas'}</summary>
  <section class="panel"><h2>Generar nuevo examen con IA</h2>${S.modules.length?`<form id="generate-exam">
  <div class="formgrid"><div class="field"><label>Módulo</label><select id="exam-module" name="module_id">${opt(S.modules,S.examModuleId,m=>m.name+' · '+m.academic_year)}</select></div>
  <div class="field"><label>Título</label><input required name="title" placeholder="Prueba de la unidad 2"></div>
@@ -201,6 +927,7 @@ async function viewExams(){
  ${d&&d.criteria.length?d.outcomes.map(r=>`<div><label class="checkbox-card"><input type="checkbox" data-ra="${r.id}" class="ra-checkbox"><span><strong>${E(r.code)} · ${E(r.description)}</strong><span class="small">Peso del RA: ${V(r.weight)} · seleccionar todos sus criterios</span></span></label>
  ${d.criteria.filter(c=>c.outcome_id===r.id).map(c=>`<label class="checkbox-card" style="margin-left:16px"><input type="checkbox" name="criteria_ids" value="${c.id}" data-parent="${r.id}"><span><strong>${E(c.code)} · ${E(c.description)}</strong><span class="small">Peso del CE: ${V(c.weight)} · RA: ${V(c.outcome_weight)}</span></span></label>`).join('')}</div>`).join(''):empty('Este módulo no tiene criterios. Complete antes la programación.')}
  <div class="actions"><button type="submit" class="btn" ${!d?.criteria?.length?'disabled':''}>Generar examen y rúbrica</button></div></form>`:empty('Cree un módulo en Programaciones.')}</section>
+ </details>
  <section class="panel"><details><summary><strong>Crear un examen manual y clasificar sus preguntas por RA/CE</strong></summary>
  <p class="small">Introduzca sus propias preguntas (test, desarrollo o problemas). Puede asignar sus CE manualmente o pedir a la IA que proponga, a partir del currículo validado, los RA/CE que realmente evalúa cada pregunta. Se admite más de un CE por pregunta; la suma de porcentajes de una pregunta debe ser 100 %. Revise las propuestas antes de guardar.</p>
  <form id="manual-exam"><div class="formgrid"><div class="field"><label>Módulo</label><select name="module_id">${opt(S.modules,S.examModuleId,x=>x.name)}</select></div>
@@ -418,6 +1145,72 @@ function downloadText(value,name,mime){const url=URL.createObjectURL(new Blob([v
 function formObject(form){return Object.fromEntries(new FormData(form).entries());}
 async function doSubmit(form){
  const id=form.id;
+ if(id==='prepare-create'){
+   const result=await busy(()=>API('/api/modules','POST',formObject(form)),'Módulo creado.');
+   if(result){S.moduleId=result.id;S.autoProposedModuleId=null;S.creatingModule=false;S.wizardDraft=null;S.preparePath=null;await page('preparar');}return;
+ }
+ if(id==='curriculum-review-form'){
+   const formData=new FormData(form);
+   const result=await busy(()=>API('/api/curriculum/review-preview','POST',formData),
+     'Vista previa curricular creada. Revisa enunciados, procedencia y diferencias.');
+   if(result){S.curriculumReview=result;await page('preparar');}
+   return;
+ }
+ if(id==='guided-upload'){
+   const result=await busy(()=>API('/api/programmings/upload','POST',new FormData(form)),'Documento original guardado.');
+   if(result){
+     if(!result.characters){toast('El documento no contiene texto extraíble. Conviértelo mediante OCR o utiliza Word.',true);await page('preparar');return;}
+     const preview=await busy(()=>API('/api/programmings/'+result.id+'/import-preview'));
+     if(preview){S.importPreview=preview;S.proposal=null;await page('preparar');}
+     else {toast('Se guardó el original. Usa «Revisar TODA la programación» para reintentar.',true);await page('preparar');}
+   }return;
+ }
+ if(id==='guided-content-import'){
+   const proposal=S.importPreview;if(!proposal)return;
+   const selected=[...form.querySelectorAll('[data-import-field]:checked')].map(el=>el.dataset.importField);
+   const edited={};
+   for(const key of selected){const input=form.querySelector('[data-import-edit="'+key+'"]');if(input)edited[key]=input.value;}
+   const hoursAccepted=Boolean(form.querySelector('[name=accept_document_hours]:checked'));
+   const unitsAccepted=Boolean(form.querySelector('[name=accept_units]:checked'));
+   const feoeAccepted=Boolean(form.querySelector('[name=accept_feoe_criteria]:checked'));
+   const hours=unitsAccepted?[...form.querySelectorAll('[data-import-unit-hours]')].map(el=>el.value):[];
+   if(unitsAccepted&&hours.some(x=>!x||!Number.isFinite(Number(x))||Number(x)<=0)){
+     toast('Para incorporar unidades, indica las horas de cada una. No se inventarán duraciones.',true);return;
+   }
+   if(!selected.length&&!hoursAccepted&&!unitsAccepted&&!feoeAccepted&&!form.querySelector('[name=keep_source_sections]:checked')){
+     toast('Selecciona algún contenido que quieras incorporar.',true);return;
+   }
+   const result=await busy(()=>API('/api/programmings/apply-content','POST',{
+     programming_id:proposal.programming_id,accepted_fields:selected,edited_fields:edited,
+     accept_document_hours:hoursAccepted,accept_units:unitsAccepted,unit_hours:hours,
+     accept_feoe_criteria:feoeAccepted,
+     keep_source_sections:Boolean(form.querySelector('[name=keep_source_sections]:checked'))
+   }),'Apartados confirmados y conservados en el borrador.');
+   if(result){S.importPreview=null;S.wizardDraft=null;S.preparePath='import';await page('preparar');}
+   return;
+ }
+ if(id==='guided-review'){
+   if(!form.elements.teacher_confirmed.checked){toast('Revise los RA y CE antes de confirmar.',true);return;}
+   const outcomes=guidedReadProposal(form);
+   const result=await busy(()=>API('/api/programmings/apply','POST',{
+     module_id:Number(S.moduleId),outcomes,
+     source_url:S.proposal?.source_url||null,consulted_at:S.proposal?.consulted_at||null
+   }),'Currículo confirmado.');
+   if(result){S.proposal=null;await page('preparar');}return;
+ }
+ if(id==='prepare-minimum'){
+   S.wizardDraft.assessment=form.elements.assessment.value;
+   S.wizardDraft.recovery=form.elements.recovery.value;
+   S.wizardDraft.source_type='evaluation';
+   const result=await busy(()=>API('/api/programming-builder/save','POST',{
+     module_id:Number(S.moduleId),draft:S.wizardDraft}),'Configuración básica guardada.');
+   if(result)await page('preparar');return;
+ }
+ if(id==='prepare-wizard-form'){
+   const ok=await saveWizardPage();
+   if(ok){S.prepareStep=Math.min(5,S.prepareStep+1);await page('preparar');}
+   return;
+ }
  if(id==='change-storage'){
    if(!confirm('Se copiarán SQLite y los originales a la nueva carpeta. Es necesario cerrar y volver a abrir la aplicación después. ¿Continuar?'))return;
    const result=await busy(()=>API('/api/storage/change','POST',formObject(form)),'Carpetas migradas; reinicie EvalúaFP.');
@@ -452,7 +1245,7 @@ async function doSubmit(form){
  }
  if(id==='create-module'){
  const result=await busy(()=>API('/api/modules','POST',formObject(form)),'Módulo creado.');
- if(result){S.moduleId=result.id;S.proposal=null;await page('programaciones');}return;}
+ if(result){S.moduleId=result.id;S.proposal=null;S.preparePath=null;await page('preparar');}return;}
  if(id==='create-student'){
  const result=await busy(()=>API('/api/students','POST',formObject(form)),'Alumno registrado.');
  if(result)await page('programaciones');return;}
@@ -482,7 +1275,7 @@ async function doSubmit(form){
    }),'Examen manual archivado.');
    if(result){S.manualDraft=null;S.examId=result.id;await page('examenes');}return;
  }
- if(id==='generate-exam'){
+ if(id==='generate-exam'||id==='generate-exam-quick'){
  const f=formObject(form);
  f.criteria_ids=[...form.querySelectorAll('[name=criteria_ids]:checked')].map(i=>Number(i.value));
  if(!f.criteria_ids.length){toast('Seleccione al menos un criterio de evaluación.',true);return;}
@@ -543,10 +1336,38 @@ document.addEventListener('submit',event=>{
  if(event.target.matches('form')){event.preventDefault();doSubmit(event.target).catch(e=>toast(e.message,true));}
 });
 document.addEventListener('change',async event=>{
+ if(event.target.id==='guide-automatic-weights'){
+    const mode=Boolean(event.target.checked);
+    $all('[data-weight-ra],[data-weight-ce]').forEach(input=>input.disabled=mode);
+    return;
+ }
+
+ try {
  const el=event.target;
+ if(el.id==='guide-region'){
+   S.nationalSources=null;S.boeCandidates=null;S.boeInspection=null;
+   const newRegion=el.value;const oldRegion=S.wizardDraft?.region;
+   if(oldRegion!==newRegion){
+     collectWizardFields();
+     const calendar=await API('/api/territories/calendar?region='+encodeURIComponent(newRegion)+'&academic_year='+encodeURIComponent(S.prepareInfo.module.academic_year));
+     S.wizardDraft.region=newRegion;
+     S.wizardDraft.schedule={...S.wizardDraft.schedule,...calendar.schedule_defaults,
+       region:newRegion,hours_confirmed:false,weekly_hours:0,total_hours:0,weekday_hours:[0,0,0,0,0],
+       hours_source_url:'',hours_source_description:'Pendiente de comprobar las horas del módulo en '+newRegion};
+     for(const field of ['normative_references','identification_data']){
+       if(!S.wizardDraft.assistant_meta?.[field]?.teacher_edited){S.wizardDraft[field]='';delete S.wizardDraft.assistant_meta?.[field];}
+     }
+     S.wizardDraft.curriculum_confirmed=false;
+     S.autoProposedModuleId=null;S.calendarInfo=null;
+     await page('preparar');
+     toast('Territorio cambiado: se han reiniciado las horas y los datos del calendario anterior.');
+   }return;
+ }
+  if(el.id==='prepare-module'){S.curriculumReview=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
  if(el.id==='module-select'){S.moduleId=el.value;S.proposal=null;await page('programaciones');}
  if(el.id==='evaluation-module'){S.evaluationModuleId=Number(el.value);S.evalInstrumentId=null;await page('evaluacion');}
  if(el.id==='eval-instrument-select'){S.evalInstrumentId=Number(el.value);renderEvalScores();}
+ if(el.id==='quick-exam-module'){S.examModuleId=el.value;await page('examenes');}
  if(el.id==='exam-module'){S.examModuleId=el.value;await page('examenes');}
  if(el.id==='upload-exam'){S.uploadExamId=el.value;S.uploadStudentId=null;S.queue=[];await page('entregas');}
  if(el.id==='review-select'){S.subId=el.value;S.pageIndex=0;await page('correcciones');}
@@ -556,12 +1377,324 @@ document.addEventListener('change',async event=>{
  if(el.classList.contains('ra-checkbox')){
   $all(`[name=criteria_ids][data-parent="${el.dataset.ra}"]`).forEach(x=>x.checked=el.checked);
  }
+ }catch(error){if(error?.message?.includes('canceló al cambiar de pantalla'))return;console.error(error);toast(error?.message||'Error al actualizar la selección.',true);}
+});
+document.querySelector('#toggle-advanced')?.addEventListener('click',()=>{
+ S.advanced=!S.advanced;
+ $('#advanced-nav').hidden=!S.advanced;
+ $('#toggle-advanced').textContent=S.advanced?'Ocultar opciones avanzadas':'Mostrar opciones avanzadas';
+ $('#toggle-advanced').setAttribute('aria-expanded',String(S.advanced));
 });
 document.addEventListener('click',async event=>{
+ try {
  const tab=event.target.closest('[data-page]');if(tab){await page(tab.dataset.page);return;}
  if(event.target.id==='large-page'){event.target.classList.toggle('zoom');return;}
  const el=event.target.closest('[data-action]');if(!el)return;
  const action=el.dataset.action;const id=Number(el.dataset.id);const index=Number(el.dataset.index);
+ if(action==='national-boe-search'){
+   collectWizardFields();
+   const m=S.prepareInfo?.module;
+   const result=await busy(()=>API('/api/national/boe-search','POST',{
+     cycle:m.cycle, region:S.wizardDraft?.region||'Canarias',academic_year:m.academic_year
+   }),'Búsqueda oficial completada; revisa los candidatos.');
+   if(result){S.boeCandidates=result;S.boeInspection=null;await page('preparar');}return;
+ }
+ if(action==='national-boe-pick'){
+   S.boeSelectedId=el.dataset.boeId;
+   const result=await busy(()=>API('/api/national/boe-inspect','POST',{boe_id:S.boeSelectedId}));
+   if(result){S.boeInspection=result;collectWizardFields();await page('preparar');}return;
+ }
+ if(action==='national-boe-inspect'){
+   S.boeSelectedId=$('#national-boe-id')?.value.trim().toUpperCase()||'';
+   const result=await busy(()=>API('/api/national/boe-inspect','POST',{boe_id:S.boeSelectedId}));
+   if(result){S.boeInspection=result;collectWizardFields();await page('preparar');}return;
+ }
+ if(action==='national-boe-add'){
+   if(!S.boeInspection)return;
+   if(!confirm('La norma consultada es una candidata. ¿Añadir su enlace a las referencias para revisarlo, sin declararla curricularmente aplicable?'))return;
+   collectWizardFields();
+   const r=S.boeInspection;const line='Norma pendiente de comprobar: '+r.title+' · '+r.url;
+   const old=S.wizardDraft.normative_references||'';
+   if(!old.includes(r.url))S.wizardDraft.normative_references=old?(old+'\n'+line):line;
+   S.wizardDraft.curriculum_confirmed=false;
+   S.wizardDraft.assistant_meta=S.wizardDraft.assistant_meta||{};
+   S.wizardDraft.assistant_meta.normative_references={origin:'BOE (candidata pendiente de revisión)',teacher_edited:true};
+   const saved=await busy(()=>API('/api/programming-builder/save','POST',{
+      module_id:Number(S.moduleId),draft:S.wizardDraft}),
+      'Referencia guardada como pendiente de revisión; no se ha dado por verificado el currículo.');
+   if(saved)await page('preparar');return;
+ }
+ if(action==='national-document-preview'){
+   const file=$('#national-table-file')?.files?.[0];
+   if(!file){toast('Selecciona un PDF o DOCX con la tabla horaria.',true);return;}
+   const form=new FormData();form.append('document',file);form.append('allow_ocr',$('#national-ocr')?.checked?'true':'false');
+   const result=await busy(()=>API('/api/national/document-preview','POST',form));
+   if(result){collectWizardFields();S.nationalTableText=result.table;S.nationalTablePreview=result;
+     toast('Se han reconocido '+result.count+' módulos; revisa las filas y la disposición antes de guardarlas.');
+     await page('preparar');}return;
+ }
+ if(action==='national-table-preview'){
+   const text=$('#national-hour-table')?.value.trim()||'';
+   if(!text){toast('Pega primero las filas copiadas de Excel o del anexo.',true);return;}
+   const result=await busy(()=>API('/api/national/table-preview','POST',{table:text}));
+   if(result){S.nationalTablePreview=result;S.nationalTableText=text;
+     collectWizardFields();await page('preparar');}
+   return;
+ }
+ if(action==='national-table-import'){
+   const preview=S.nationalTablePreview;
+   if(!preview)return;
+   collectWizardFields();
+   const cfg=S.wizardDraft.schedule;
+   if(!cfg.hours_source_url||!cfg.hours_source_description){toast('Indica debajo la URL y el nombre de la disposición de la que procede la tabla.',true);return;}
+   if(!confirm('Confirmas que las '+preview.count+' filas proceden de la disposición citada y corresponden a este ciclo, comunidad y curso? Se guardarán en la biblioteca de este equipo.'))return;
+   const result=await busy(()=>API('/api/national/table-import','POST',{
+      module_id:Number(S.moduleId),table:S.nationalTableText,
+      source_url:cfg.hours_source_url,source_title:cfg.hours_source_description,
+      teacher_confirmed:true,replace_existing:false
+   }),'Fichas horarias del ciclo guardadas.');
+   if(result){toast('Guardados '+result.records_saved+' registros; '+result.records_unchanged+' existentes respetados.');
+     S.nationalTablePreview=null;S.nationalTableText='';S.nationalSources=null;await page('preparar');}
+   return;
+ }
+ if(action==='national-ai-extract-hours'){
+   const fragment=$('#national-hours-excerpt')?.value.trim()||'';
+   if(!fragment){toast('Copia primero el fragmento del boletín.',true);return;}
+   if(!confirm('Se enviará únicamente el fragmento que has copiado a tu proveedor de IA. ¿Lo autorizas?'))return;
+   const result=await busy(()=>API('/api/national/extract-hours','POST',{
+     module_id:Number(S.moduleId),fragment,authorize_ai:true
+   }),'Propuesta extraída. Comprueba la cita literal.');
+   if(result){S.nationalHoursPreview=result;
+     const panel=$('#national-hours-excerpt')?.closest('details');
+     collectWizardFields();await page('preparar');
+   }return;
+ }
+ if(action==='national-ai-apply-hours'){
+   const proposal=S.nationalHoursPreview;
+   if(!proposal)return;
+   if(!confirm('Estas cifras proceden de una propuesta de IA. ¿Aplicarlas como valores todavía pendientes de verificación docente?'))return;
+   collectWizardFields();
+   const cfg=S.wizardDraft.schedule;
+   cfg.total_hours=proposal.total_hours;cfg.weekly_hours=proposal.weekly_hours;
+   cfg.hours_confirmed=false;cfg.hours_source_url='';
+   cfg.hours_source_description='Propuesta IA basada en un extracto. Falta aportar y comprobar la norma oficial.';
+   S.nationalHoursPreview=null;await page('preparar');return;
+ }
+ if(action==='national-save-hours'){
+   collectWizardFields();
+   const c=S.wizardDraft?.schedule||{};
+   if(!c.hours_confirmed||!c.hours_source_url||!c.hours_source_description){toast('Confirma las horas y escribe la URL y el título de la disposición oficial.',true);return;}
+   if(!confirm('Guardar estas horas y su fuente como ficha revisada por ti para el mismo módulo, territorio y curso. ¿Continuar?'))return;
+   if(!await saveWizardPage())return;
+   const result=await busy(()=>API('/api/national/save-hours','POST',{
+     module_id:Number(S.moduleId),teacher_confirmed:true,total_hours:c.total_hours,
+     weekly_hours:c.weekly_hours,source_url:c.hours_source_url,source_title:c.hours_source_description
+   }),'Ficha horaria guardada con su fuente.');
+   if(result){S.nationalSources=null;await page('preparar');}return;
+ }
+ if(action==='national-save-calendar'){
+   collectWizardFields();
+   const c=S.wizardDraft?.schedule||{};
+   if(!c.calendar_confirmed||!c.calendar_source_url||!S.wizardDraft.center){toast('Antes de guardar confirma el calendario, identifica su fuente y escribe el centro en el paso 1.',true);return;}
+   if(!confirm('Guardar calendario, festivos y evaluaciones para este centro, territorio y curso. ¿Continuar?'))return;
+   if(!await saveWizardPage())return;
+   const result=await busy(()=>API('/api/national/save-calendar','POST',{
+     module_id:Number(S.moduleId),teacher_confirmed:true
+   }),'Calendario del centro guardado.');
+   if(result){S.nationalSources=null;await page('preparar');}return;
+ }
+ if(action==='national-apply-calendar'){
+   const saved=S.nationalSources?.calendar_record;
+   if(!saved)return;
+   if(!confirm('La ficha guardada sustituirá las fechas y festivos de este módulo. No modificará horas, unidades ni FEOE. ¿Aplicar?'))return;
+   collectWizardFields();
+   Object.assign(S.wizardDraft.schedule,JSON.parse(JSON.stringify(saved.schedule)));
+   S.wizardDraft.schedule.calendar_confirmed=false;
+   toast('Fechas cargadas: debes confirmarlas para este módulo.');
+   await page('preparar');return;
+ }
+ if(action==='retry-page'){await page(S.page);return;}
+ if(action==='prepare-new-module'){S.creatingModule=true;S.preparePath=null;await page('preparar');return;}
+ if(action==='prepare-select-path'){
+   S.preparePath=el.dataset.path;S.prepareStep=0;S.proposal=null;S.unitProposal=null;
+   if(S.wizardDraft)S.wizardDraft.source_type=S.preparePath;
+   await page('preparar');return;
+ }
+ if(action==='prepare-overview'){S.preparePath=null;await page('preparar');return;}
+ if(action==='prepare-discard-proposal'){S.proposal=null;await page('preparar');return;}
+ if(action==='review-all-program'){
+   const result=await busy(()=>API('/api/programmings/'+id+'/import-preview'));
+   if(result){S.importPreview=result;S.proposal=null;S.preparePath='import';await page('preparar');}return;
+ }
+ if(action==='discard-import-preview'){
+   S.importPreview=null;await page('preparar');return;
+ }
+ if(action==='guided-analyze'){
+   if(!confirm('Se enviará el texto de la programación al proveedor de IA configurado. No incluya datos personales innecesarios. ¿Autoriza el análisis?'))return;
+   const result=await busy(()=>API('/api/programmings/analyze','POST',{programming_id:id}));
+   if(result){S.proposal=result;await page('preparar');}return;
+ }
+ if(action==='guided-boe'){
+   const boe=$('#guide-boe')?.value.trim();
+   if(!confirm('Se consultará la disposición del BOE seleccionada. Revise la correspondencia con el módulo y la normativa autonómica. ¿Continuar?'))return;
+   const result=await busy(()=>API('/api/curriculum/official','POST',{
+     module_id:Number(S.moduleId),boe_id:boe||null,authorize_official_query:true}));
+   if(result){S.proposal=result;S.preparePath='create';await page('preparar');}return;
+ }
+ if(action==='prepare-wizard-back'){
+   const ok=await saveWizardPage();if(ok){S.prepareStep=Math.max(0,S.prepareStep-1);await page('preparar');}return;
+ }
+ if(action==='prepare-wizard-open'){
+   S.preparePath='create';S.prepareStep=0;await page('preparar');return;
+ }
+ if(action==='prepare-ai-local'||action==='prepare-ai-all'){
+   collectWizardFields();
+   const useAi=action==='prepare-ai-all';
+   if(useAi&&!confirm('Se enviarán al proveedor de IA configurado el nombre del módulo, el ciclo y sus RA/CE confirmados. No se enviará el nombre del centro ni datos personales. ¿Autoriza generar las propuestas?'))return;
+   const result=await busy(()=>API('/api/programming-builder/propose','POST',{
+      module_id:Number(S.moduleId),region:S.wizardDraft.region||'Canarias',mode:useAi?'ai':'base',authorize_ai:useAi}));
+   if(result){const stats=applyAssistantFields(result,useAi?'ai':'base');
+     toast(`${stats.applied} apartados completados · ${stats.skipped} conservados. Puedes editar todo.`);
+     await page('preparar');}return;
+ }
+ if(action==='prepare-ai-improve'){
+   collectWizardFields();
+   const field=el.dataset.field;const value=String(S.wizardDraft[field]||'');
+   if(!value.trim()){toast('Escribe primero algún texto en este apartado.',true);return;}
+   if(!confirm('Se enviará este texto al proveedor de IA configurado para mejorarlo. Evita incluir datos personales del alumnado. Tu redacción NO se sustituirá sin confirmación. ¿Autorizar?'))return;
+   const result=await busy(()=>API('/api/programming-builder/improve','POST',{
+      module_id:Number(S.moduleId),field,text:value,authorize_ai:true}));
+   if(result){S.aiPreview=result;await page('preparar');}return;
+ }
+ if(action==='guide-ai-discard'){S.aiPreview=null;await page('preparar');return;}
+ if(action==='guide-ai-accept'){
+   collectWizardFields();const text=$('#guide-ai-proposal')?.value.trim();
+   if(!text){toast('La propuesta de texto está vacía.',true);return;}
+   const key=S.aiPreview?.field;
+   if(!key||!WD_FIELDS.includes(key))return;
+   S.wizardDraft[key]=text;
+   S.wizardDraft.assistant_meta=S.wizardDraft.assistant_meta||{};
+   S.wizardDraft.assistant_meta[key]={origin:'IA revisada y aceptada por docente',teacher_edited:true};
+   S.aiPreview=null;await page('preparar');toast('Redacción aceptada. No se ha alterado el currículo ni los pesos.');return;
+ }
+ if(action==='prepare-propose-units'){
+   collectWizardFields();
+   if(S.wizardDraft.units?.length&&!confirm('Se sustituirá la distribución actual de unidades. ¿Continuar?'))return;
+   const result=await busy(()=>API('/api/programming-builder/propose-units','POST',{
+       module_id:Number(S.moduleId),schedule:S.wizardDraft.schedule,region:S.wizardDraft.region||'Canarias'}));
+   if(result){S.wizardDraft.units=result.units;toast('Unidades calculadas según las horas reales indicadas y los CE del currículo.');await page('preparar');}
+   return;
+ }
+ if(action==='prepare-manual-units'){
+   collectWizardFields();
+   const n=Number($('#guide-unit-count')?.value||0);
+   if(!Number.isInteger(n)||n<1||n>100)return toast('Indica un número entre 1 y 100 unidades.',true);
+   if(S.wizardDraft.units.length&&!confirm('Se sustituirá la cuadrícula actual de unidades; el currículo no se modificará. ¿Continuar?'))return;
+   S.wizardDraft.units_mode='manual';
+   S.wizardDraft.units=Array.from({length:n},(_,i)=>({code:'UD'+String(i+1).padStart(2,'0'),
+       title:'Unidad didáctica por definir',term:Math.min(3,1+Math.floor(i*3/n)),hours:1,
+       criteria_codes:[],instruments:'',resources:''}));
+   await page('preparar');toast('Cuadrícula creada. Asigna todos los CE y horas antes de finalizar.');return;
+ }
+ if(action==='guide-save-weights'){
+   collectWizardFields();
+   const automatic=Boolean($('#guide-automatic-weights')?.checked);
+   if(!confirm(automatic?'¿Aplicar el reparto igualitario por CE y recalcular todos los pesos automáticos? Si ya hay pesos del departamento, se sustituirán.':'¿Guardar las ponderaciones personalizadas de todos los RA y CE? Las sumas deben ser exactamente 100,00 %.'))return;
+   const info=S.prepareInfo||{};
+   const rows=(info.outcomes||[]).map(ra=>({id:Number(ra.id),weight:Number($(`[data-weight-ra="${ra.id}"]`)?.value),
+     criteria:(info.criteria||[]).filter(c=>Number(c.outcome_id)===Number(ra.id))
+         .map(c=>({id:Number(c.id),weight:Number($(`[data-weight-ce="${c.id}"]`)?.value)}))}));
+   const result=await busy(()=>API('/api/programming-builder/weights','POST',{module_id:Number(S.moduleId),
+      mode:automatic?'automatic':'manual',rows,teacher_confirmed:true}),'Ponderaciones actualizadas tras validación.');
+   if(result)await page('preparar');return;
+ }
+ if(action==='prepare-enrich-units'){
+   collectWizardFields();const units=S.wizardDraft.units||[];
+   if(!units.length)return toast('Crea primero las unidades y sus CE asociados.',true);
+   if(!confirm('Se enviarán a tu proveedor de IA los títulos y CE asociados a las unidades, sin datos personales. ¿Autorizas este envío?'))return;
+   const result=await busy(()=>API('/api/programming-builder/enrich-units','POST',{
+     module_id:Number(S.moduleId),units,authorize_ai:true}));
+   if(result){S.unitProposal=result;await page('preparar');}return;
+ }
+ if(action==='prepare-dismiss-unit-ai'){S.unitProposal=null;await page('preparar');return;}
+ if(action==='prepare-accept-unit-ai'){
+   collectWizardFields();
+   let changed=0;
+   for(const proposal of S.unitProposal?.units||[]){
+     const found=(S.wizardDraft.units||[]).find(x=>x.code===proposal.code);
+     if(!found)continue;
+     for(const field of ['instruments','resources']){
+       const text=String(found[field]||'');
+       if(!text.trim()||text.includes('(propuesta revisable)')||text.includes('(adaptar al centro)')){
+         found[field]=proposal[field];changed++;
+       }
+     }
+   }
+   S.unitProposal=null;await page('preparar');
+   toast(`Se han incorporado ${changed} campos. Los textos ya personalizados se han conservado.`);return;
+ }
+ if(action==='feoe-minimum-preview'||action==='feoe-minimum-ai'){
+   if(action==='feoe-minimum-ai'&&!confirm('Se enviarán los RA y CE seleccionados a tu proveedor de IA. No se enviarán datos del alumnado o de la empresa. ¿Autorizar y continuar?'))return;
+   const ok=await saveWizardPage();if(!ok)return;
+   const result=await busy(()=>action==='feoe-minimum-ai'
+       ?API('/api/programming-builder/feoe-minimum/ai','POST',{module_id:Number(S.moduleId),authorize_ai:true})
+       :API('/api/programming-builder/'+Number(S.moduleId)+'/feoe-minimum'));
+   if(result){S.feoeMinimumPreview=result;await page('preparar');}return;
+ }
+ if(action==='feoe-minimum-discard'){S.feoeMinimumPreview=null;await page('preparar');return;}
+ if(action==='feoe-minimum-accept'){
+   if(!$('#feoe-minimum-confirm')?.checked)return toast('Confirma que has revisado los criterios y las tareas.',true);
+   collectFeoeMinimumFields();
+   const result=await busy(()=>API('/api/programming-builder/feoe-minimum/accept','POST',{
+     module_id:Number(S.moduleId),teacher_confirmed:true,
+     rows:S.feoeMinimumPreview.rows.map(r=>({criteria_code:r.criteria_code,
+       activity:r.activity,evidence:r.evidence,support:r.support,assessment_role:r.assessment_role}))
+   }),'Propuesta FEOE revisada y guardada.');
+   if(result){S.wizardDraft=null;S.feoeMinimumPreview=null;await page('preparar');}
+   return;
+ }
+ if(action==='prepare-propose-feoe'){
+   collectWizardFields();const ce=S.prepareInfo.criteria||[];
+   if(!ce.length)return toast('No existen CE confirmados.',true);
+   if(S.wizardDraft.schedule.feoe_criteria_codes.length&&!confirm('Se sustituirán las marcas FEOE actuales. ¿Continuar?'))return;
+   const n=ce.length,p=Number(S.wizardDraft.schedule.feoe_target_percent||15);
+   let count=Math.max(1,Math.round(n*p/100));
+   const low=Math.ceil(n*.10),high=Math.floor(n*.20);
+   if(low<=high)count=Math.min(high,Math.max(low,count));
+   const selected=[];const used=new Set();
+   // Primero se diversifica la selección entre RA; después, se completan los cupos.
+   for(const x of ce){if(!used.has(x.ra_code)&&selected.length<count){selected.push(x.code);used.add(x.ra_code);}}
+   for(const x of ce){if(selected.length>=count)break;if(!selected.includes(x.code))selected.push(x.code);}
+   S.wizardDraft.schedule.feoe_criteria_codes=selected;
+   toast('Propuesta FEOE preparada. Verifica que responde al plan de formación acordado.');
+   await page('preparar');return;
+ }
+ if(action==='prepare-add-activity'){
+   collectWizardFields();S.wizardDraft.activities=S.wizardDraft.activities||[];
+   S.wizardDraft.activities.push({type:'complementaria',title:'Visita didáctica a empresa del sector (propuesta, pendiente de autorización)',date:'',unit_code:'',
+      description:'Observación y análisis de procesos profesionales vinculados con los RA y CE del módulo.',resources:'Autorizaciones, coordinación con la entidad, transporte si procede.'});
+   await page('preparar');return;
+ }
+ if(action==='prepare-remove-activity'){
+   collectWizardFields();S.wizardDraft.activities.splice(index,1);await page('preparar');return;
+ }
+ if(action==='prepare-add-unit'){
+   collectWizardFields();
+   const used=new Set((S.wizardDraft.units||[]).map(u=>String(u.code||'').toUpperCase()));
+   let n=1;
+   while(used.has('UD'+String(n).padStart(2,'0')))n++;
+   S.wizardDraft.units.push({code:'UD'+String(n).padStart(2,'0'),title:'Nueva unidad',term:1,hours:1,criteria_codes:[],instruments:'Prueba práctica y portafolio (propuesta editable)',resources:'Aula con equipamiento informático y materiales didácticos (adaptar al centro)'});
+   await page('preparar');return;
+ }
+ if(action==='prepare-remove-unit'){
+   collectWizardFields();S.wizardDraft.units.splice(index,1);await page('preparar');return;
+ }
+ if(action==='prepare-finish'){
+   collectWizardFields();
+   const result=await busy(()=>API('/api/programming-builder/save','POST',{
+     module_id:Number(S.moduleId),draft:S.wizardDraft}),'Borrador guardado.');
+   if(result)await page('preparar');return;
+ }
  if(action==='lock-api'){
   const result=await busy(()=>API('/api/settings/lock','POST',{}),'Clave API bloqueada.');if(result)await page('ajustes');return;
  }
@@ -630,7 +1763,7 @@ document.addEventListener('click',async event=>{
    else{const j=index+(action==='queue-up'?-1:1);[S.queue[index],S.queue[j]]=[S.queue[j],S.queue[index]];}
    await page('entregas');return;}
  if(action==='toggle-material'){
-   const active=event.target.dataset.active==='1';
+   const active=el.dataset.active==='1';
    if(active&&!confirm('Desactivar este material permitirá generar exámenes sin utilizarlo. ¿Confirmar?'))return;
    const result=await busy(()=>API('/api/materials/active','POST',{module_id:S.moduleId,material_id:id,active:!active}),'Estado del material actualizado.');
    if(result)await page('programaciones');return;}
@@ -726,6 +1859,7 @@ document.addEventListener('click',async event=>{
    const holder=$('#audit-info');
    holder.innerHTML=`<h3>Historial de operaciones</h3><div class="itemlist">${list.map(a=>`<div class="item"><div><b>${E(a.action)}</b><div class="small">${E(a.at)} · ${E(a.entity)} #${E(a.entity_id)}</div><details><summary class="small">Detalles</summary><pre class="small">${E(a.details_json)}</pre></details></div></div>`).join('')}</div>`;
    return;}
+ } catch(error){if(error?.message?.includes('canceló al cambiar de pantalla'))return;console.error(error);toast(error?.message||'Error al realizar la acción.',true);}
 });
 startIntro();
 page('inicio');

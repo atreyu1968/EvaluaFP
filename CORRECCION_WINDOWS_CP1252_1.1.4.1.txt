@@ -1,0 +1,25 @@
+EvalúaFP 1.1.4.1 - CORRECCIÓN DE COMPILACIÓN EN WINDOWS
+
+PROBLEMA ORIGINAL
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x8d in position 9899.
+El test tests/test_v114_gantt_legible.py hacía Path.read_text() sin codificación.
+En Windows, la predeterminada puede ser cp1252. web/app.js está en UTF-8.
+El carácter Í de «EMPIEZA AQUÍ» contiene el byte 0x8d en esa posición.
+
+CORRECCIONES
+- Lectura UTF-8 explícita en todos los tests que acceden a texto.
+- Forzada la codificación UTF-8 para Python y su salida durante la compilación.
+- Si fallan los tests, el BAT muestra el fallo real y deja claro que PyInstaller aún no se ha ejecutado.
+- Nuevas pruebas para que no reaparezca el problema.
+
+PASOS
+1. Cierre EvalúaFP y haga copia de seguridad de los datos si va a sustituirla.
+2. Extraiga COMPLETO el ZIP de fuentes corregidas en una carpeta nueva, sin mezclar versiones.
+3. Abra CREAR_VERSION_PENDRIVE.bat (Windows 10/11 x64).
+4. El programa ejecutará las pruebas y después PyInstaller.
+5. Cuando termine, compruebe dist\EvaluaFP_Portatil\EvaluaFP_Portatil.exe.
+6. Pruebe el EXE en un Windows real antes de distribuirlo.
+
+NO ES NECESARIO eliminar Python, su entorno gestionado ni las bases de datos SQLite.
+No desactive Windows Defender. Si surge un error posterior de PyInstaller, comparta el
+primer error que aparezca en la salida para diagnosticarlo.

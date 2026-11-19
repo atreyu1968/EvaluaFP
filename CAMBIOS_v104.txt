@@ -1,0 +1,3 @@
+EvalúaFP 1.0.4 — Extracción verificable de RA/CE y generador de exámenes con menos llamadas a la IA.
+54 pruebas automatizadas superadas. No cambia el esquema SQLite.
+Recompilar ejecutables después de actualizar archivos.

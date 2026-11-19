@@ -5,6 +5,7 @@ import email.policy
 import hashlib
 import html
 import io
+import math
 import json
 import mimetypes
 import os
@@ -32,8 +33,13 @@ import weight_defaults
 import exportaciones
 import manual_alignment
 import curriculum_official
+import program_builder
+import territorial_profiles as territories
+import schedule_engine
+import program_importer
+import program_assistant
 
-APP_VERSION = "1.0.6"
+APP_VERSION = "1.2.1-beta"
 TOKEN = secrets.token_urlsafe(32)
 WEB = (Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'web')
 
@@ -392,7 +398,7 @@ def register_students(db, module_id, incoming):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='EvaluaFP/1.0.6'
+    server_version='EvaluaFP/1.2.1-beta'
     def log_message(self,format,*args):
         # No vuelca tokens, claves ni datos de alumnado en stdout.
         return
@@ -468,6 +474,51 @@ class Handler(BaseHTTPRequestHandler):
                         stats[table]=d.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]
                     return self.send(stats)
                 if path=='/api/modules':return self.send(data.dicts(d.execute('SELECT * FROM modules ORDER BY id DESC')))
+                if path=='/api/national/sources':
+                    import national_registry
+                    mid=int((args.get('module_id') or ['0'])[0])
+                    return self.send(national_registry.propose_module_sources(d,mid))
+                if path=='/api/territories':
+                    return self.send({'territories':[{'code':k,'label':v} for k,v in territories.TERRITORIES]})
+                if path=='/api/territories/calendar':
+                    region=(args.get('region') or [''])[0]
+                    year=(args.get('academic_year') or [''])[0]
+                    island=(args.get('island') or [''])[0]
+                    info=territories.public_profile(region,year,island)
+                    info['schedule_defaults']=schedule_engine.defaults(info['academic_year'],info['territory'],island)
+                    return self.send(info)
+                m_import=re.fullmatch(r'/api/programmings/(\d+)/import-preview',path)
+                if m_import:
+                    program=must_row(d,'SELECT id,filename,local_path,extracted_text,module_id FROM programmings WHERE id=?',(int(m_import[1]),))
+                    proposal=program_importer.analyze_document(program['local_path'],program['extracted_text'])
+                    proposal['filename']=program['filename']
+                    proposal['programming_id']=program['id']
+                    proposal['module_id']=program['module_id']
+                    existing=program_builder.load(d,program['module_id'])['draft']
+                    proposal['existing_fields']={key:bool(existing.get(key)) for key in program_importer.FIELD_NAMES}
+                    proposal['existing_units']=bool(existing.get('units'))
+                    return self.send(proposal)
+                m_hours=re.fullmatch(r'/api/programming-builder/(\d+)/hours-reference',path)
+                if m_hours:
+                    module=program_assistant.module_context(d,int(m_hours[1]))[0]
+                    draft=program_builder.load(d,int(m_hours[1]))['draft']
+                    return self.send({'proposal':program_assistant.hours_proposal(module,draft['region']),
+                                      'schedule':draft['schedule']})
+                m_feoe=re.fullmatch(r'/api/programming-builder/(\d+)/feoe-minimum',path)
+                if m_feoe:
+                    import feoe_minimum
+                    return self.send(feoe_minimum.propose(d,int(m_feoe[1])))
+                m_feoe_export=re.fullmatch(r'/api/programming-builder/(\d+)/feoe-minimum\.(docx|pdf|md)',path)
+                if m_feoe_export:
+                    import feoe_minimum
+                    blob,mime,filename=feoe_minimum.export(d,int(m_feoe_export[1]),m_feoe_export[2])
+                    return self.send_bytes(blob,mime,filename)
+                m_draft=re.fullmatch(r'/api/programming-builder/(\d+)',path)
+                if m_draft:return self.send(program_builder.diagnose(d,int(m_draft[1])))
+                m_export=re.fullmatch(r'/api/programming-builder/(\d+)/export\.(pdf|docx|md)',path)
+                if m_export:
+                    blob,mime,filename=program_builder.export(d,int(m_export[1]),m_export[2])
+                    return self.send_bytes(blob,mime,filename)
                 m=re.fullmatch(r'/api/modules/(\d+)',path)
                 if m:return self.send(fields_safe(d,int(m[1])))
                 if path=='/api/exams':return self.send(list_exams(d))
@@ -558,7 +609,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_file(location,'application/zip',location.name)
             raise ValueError('Ruta GET desconocida.')
         if self.command!='POST':raise ValueError('Método no permitido')
-        if path in ('/api/programmings/upload','/api/materials/upload','/api/submissions/upload','/api/submissions/batch','/api/evaluation/import'):
+        if path in ('/api/programmings/upload','/api/materials/upload','/api/submissions/upload','/api/submissions/batch','/api/evaluation/import','/api/national/document-preview','/api/curriculum/review-preview'):
             fields,files=multipart(self)
         else:
             body=read_json(self)
@@ -614,13 +665,151 @@ class Handler(BaseHTTPRequestHandler):
             return self.send({'ok':True,**result})
         if path=='/api/modules':
             year=str(body.get('academic_year','')).strip();cycle=str(body.get('cycle','')).strip();name=str(body.get('name','')).strip()
+            region=territories.require_territory(body.get('territory') or 'Canarias')
+            year=territories.year_code(year)
             if not year or not cycle or not name or len(name)>150:raise ValueError('Curso, ciclo y módulo son obligatorios.')
             with data.connect() as d:
-                d.execute('INSERT INTO modules(academic_year,cycle,name,group_name,created_at) VALUES(?,?,?,?,?)',
-                          (year,cycle,name,str(body.get('group_name','')),data.now()))
+                d.execute('INSERT INTO modules(academic_year,cycle,name,group_name,created_at,territory) VALUES(?,?,?,?,?,?)',
+                          (year,cycle,name,str(body.get('group_name','')),data.now(),region))
                 mid=d.execute('SELECT last_insert_rowid()').fetchone()[0]
                 data.log(d,'module_created','module',mid,{'name':name})
             return self.send({'id':mid})
+        if path=='/api/curriculum/review-preview':
+            # Vista previa no destructiva y sin IA: no guarda el documento ni
+            # cambia RA/CE, pesos, notas, exámenes o programaciones existentes.
+            import tempfile
+            import curriculum_review
+            mid=int(fields.get('module_id','0'))
+            uploads=[(name,blob) for field,name,blob in files if field=='document']
+            if len(uploads)!=1:
+                raise ValueError('Seleccione exactamente un documento PDF, DOCX, TXT o MD.')
+            filename,blob=uploads[0]
+            if not blob or len(blob)>curriculum_review.MAX_FILE:
+                raise ValueError('El documento no puede superar 15 MB.')
+            kind=fields.get('document_kind','programacion')
+            code=str(fields.get('module_code','')).strip()
+            with data.connect() as d:
+                module=must_row(d,'SELECT id,name FROM modules WHERE id=?',(mid,))
+                saved=program_builder.load(d,mid)['draft'].get('official_module_code','').strip()
+                if saved and code!=saved:
+                    raise ValueError('El código indicado no coincide con el código curricular registrado para este módulo.')
+                existing=data.dicts(d.execute('SELECT id,code,description,weight FROM outcomes WHERE module_id=? ORDER BY id',(mid,)))
+                for outcome in existing:
+                    outcome['criteria']=data.dicts(d.execute(
+                        'SELECT code,description,weight FROM criteria WHERE outcome_id=? ORDER BY id',
+                        (outcome['id'],)))
+            suffix=Path(filename).suffix.lower()
+            if suffix not in ('.pdf','.docx','.txt','.md'):
+                raise ValueError('Solo se permiten documentos PDF, DOCX, TXT o MD.')
+            with tempfile.TemporaryDirectory(prefix='evaluafp_ra_ce_') as folder:
+                target=Path(folder)/('curriculo'+suffix)
+                target.write_bytes(blob)
+                report=curriculum_review.preview(target,module['name'],code,document_kind=kind)
+            report['comparison']=curriculum_review.compare(report,existing)
+            report['default_weight_proposal']=curriculum_review.propose_equal_weights(report)
+            report['existing_ra_count']=len(existing)
+            report['can_auto_apply']=False
+            return self.send(report)
+        if path=='/api/national/document-preview':
+            import official_document_tables
+            uploads=[(name,blob) for field,name,blob in files if field=='document']
+            if len(uploads)!=1:
+                raise ValueError('Seleccione exactamente un PDF o Word con la tabla horaria.')
+            # Solicitud local protegida por token y sin envío a servicios de IA.
+            return self.send(official_document_tables.preview_document(
+                uploads[0][0],uploads[0][1],fields.get('allow_ocr')=='true'))
+        if path=='/api/national/boe-search':
+            import boe_discovery
+            return self.send(boe_discovery.search_title(body.get('cycle',''),
+                body.get('region',''),body.get('academic_year','')))
+        if path=='/api/national/boe-inspect':
+            import boe_discovery
+            return self.send(boe_discovery.inspect_boe_id(body.get('boe_id','')))
+        if path=='/api/national/table-preview':
+            import national_registry
+            return self.send(national_registry.preview_hours_table(body.get('table')))
+        if path=='/api/national/table-import':
+            import national_registry
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                result=national_registry.import_hours_table(d,mid,body.get('table'),
+                    body.get('source_url'),body.get('source_title'),
+                    body.get('teacher_confirmed') is True,body.get('replace_existing') is True)
+            return self.send(result)
+        if path=='/api/national/extract-hours':
+            import national_registry
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                result=national_registry.extract_hours_with_ai(d,mid,body.get('fragment'),body.get('authorize_ai') is True)
+            return self.send(result)
+        if path=='/api/national/save-hours':
+            import national_registry
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                result=national_registry.save_hours(d,mid,body)
+            return self.send({'saved':True,'record':result})
+        if path=='/api/national/save-calendar':
+            import national_registry
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                result=national_registry.save_calendar(d,mid,body)
+            return self.send({'saved':True,'record':result})
+        if path=='/api/programming-builder/propose':
+            if body.get('mode')=='ai' and body.get('authorize_ai') is not True:
+                raise ValueError('Debe autorizar expresamente el uso de IA antes de generar contenido.')
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                result=program_assistant.propose(d,mid,str(body.get('region','Canarias')),
+                        str(body.get('mode','base')),body.get('fields'))
+            return self.send(result)
+        if path=='/api/programming-builder/improve':
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                result=program_assistant.improve_text(d,mid,body.get('field'),body.get('text'),
+                                                   body.get('authorize_ai') is True)
+            return self.send(result)
+        if path=='/api/programming-builder/enrich-units':
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                result=program_assistant.enrich_unit_details(d,mid,body.get('units'),body.get('authorize_ai') is True)
+            return self.send(result)
+        if path=='/api/programming-builder/enrich-planning':
+            import planning_matrix
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                result=planning_matrix.ai_enrich(d,mid,body.get('units'),None,
+                        body.get('term_assessments'),body.get('feoe_tasks'),
+                        body.get('authorize_ai') is True)
+            return self.send(result)
+        if path=='/api/programming-builder/weights':
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                result=program_assistant.update_weights(d,mid,body.get('mode'),body.get('rows'),body.get('teacher_confirmed') is True)
+            return self.send(result)
+        if path=='/api/programming-builder/propose-units':
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                result=program_assistant.propose_units(d,mid,body.get('schedule'),str(body.get('region','Canarias')))
+            return self.send(result)
+        if path=='/api/programming-builder/feoe-minimum/ai':
+            import feoe_minimum
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                response=feoe_minimum.propose(d,mid,'ai',body.get('authorize_ai') is True)
+            return self.send(response)
+        if path=='/api/programming-builder/feoe-minimum/accept':
+            import feoe_minimum
+            if body.get('teacher_confirmed') is not True:
+                raise ValueError('Confirme los criterios y las tareas del programa formativo antes de guardarlos.')
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                response=feoe_minimum.accept(d,mid,body.get('rows'))
+            return self.send(response)
+        if path=='/api/programming-builder/save':
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                result=program_builder.save(d,mid,body.get('draft'))
+            return self.send(result)
         if path=='/api/students':
             mid=int(body['module_id']); code=str(body.get('code','')).strip();name=str(body.get('name','')).strip()
             if not name or not code: raise ValueError('Indique código y nombre del alumno.')
@@ -728,6 +917,64 @@ class Handler(BaseHTTPRequestHandler):
                           'consulted_at':proposal['consulted_at'],
                           'outcomes':len(proposal['outcomes'])})
             return self.send(proposal)
+        if path=='/api/programmings/apply-content':
+            pid=int(body.get('programming_id') or 0)
+            chosen=body.get('accepted_fields') or []
+            edited=body.get('edited_fields') or {}
+            if not isinstance(chosen,list) or not isinstance(edited,dict):
+                raise ValueError('Selección de apartados incorrecta.')
+            if len(chosen)!=len(set(chosen)) or set(chosen)-set(program_importer.FIELD_NAMES):
+                raise ValueError('Selección de apartados no válida.')
+            with data.connect() as d:
+                program=must_row(d,'SELECT * FROM programmings WHERE id=?',(pid,))
+                extracted=program_importer.analyze_document(program['local_path'],program['extracted_text'])
+                original=program_builder.load(d,program['module_id'])['draft']
+                merged=json.loads(json.dumps(original))
+                for key in chosen:
+                    if key not in extracted['fields']:raise ValueError('Apartado no encontrado en el documento: '+key)
+                    val=edited.get(key,extracted['fields'][key])
+                    if not isinstance(val,str) or len(val)>12000:raise ValueError('El apartado '+key+' supera el tamaño permitido.')
+                    merged[key]=val
+                # Solo cambia los datos seleccionados y deja todos los demás intactos.
+                if body.get('keep_source_sections',True) is True:
+                    older=[s for s in merged.get('imported_sections',[]) if int(s.get('programming_id') or 0)!=pid]
+                    merged['imported_sections']=older+[{**sec,'programming_id':pid} for sec in extracted['sections']]
+                if body.get('accept_document_hours',False) is True:
+                    proposed=extracted['proposed_hours']
+                    if proposed['total_hours'] is None or proposed['weekly_hours'] is None:
+                        raise ValueError('El archivo no contiene horas inequívocas.')
+                    merged['schedule']['total_hours']=proposed['total_hours']
+                    merged['schedule']['weekly_hours']=proposed['weekly_hours']
+                    merged['schedule']['weekday_hours']=[0,0,0,0,0]
+                if body.get('accept_units',False) is True:
+                    proposed=extracted['proposed_units']
+                    hours=body.get('unit_hours',[])
+                    if not isinstance(hours,list) or len(hours)!=len(proposed) or not proposed:
+                        raise ValueError('Indique las horas de todas las unidades detectadas.')
+                    validated=[]
+                    for unit,amount in zip(proposed,hours):
+                        try: n=float(amount)
+                        except (ValueError,TypeError):raise ValueError('Las horas de cada unidad deben ser números válidos.') from None
+                        if not math.isfinite(n) or n<=0 or n>1000:raise ValueError('Horas incorrectas en '+unit['code'])
+                        validated.append({**unit,'hours':round(n,2),'criteria_codes':[],
+                                          'resources':'','instruments':''})
+                    merged['units']=validated
+                if body.get('accept_feoe_criteria',False) is True:
+                    feoe=extracted['proposed_feoe_criteria']
+                    if not feoe:raise ValueError('No se han localizado CE FEOE inequívocos en el documento.')
+                    merged['schedule']['feoe_criteria_codes']=[item['code'] for item in feoe]
+                merged['source_type']='import'
+                merged['import_info']={'programming_id':pid,'filename':program['filename'],
+                                       'applied_fields':chosen,'source_type':'documento_importado'}
+                result=program_builder.save(d,program['module_id'],merged)
+                data.log(d,'programming_full_content_applied','programming',pid,
+                         {'mapped_fields':chosen,'sections':len(extracted['sections']),
+                          'hours_imported':body.get('accept_document_hours',False) is True,
+                          'units_imported':body.get('accept_units',False) is True,
+                          'feoe_proposed_imported':body.get('accept_feoe_criteria',False) is True})
+            return self.send({'ok':True,'saved_fields':chosen,
+                              'sections_preserved':len(extracted['sections']) if body.get('keep_source_sections',True) else 0,
+                              'module_id':program['module_id'],'diagnosis':result['diagnosis']})
         if path=='/api/programmings/analyze':
             with data.connect() as d:
                 program=must_row(d,'SELECT * FROM programmings WHERE id=?',(int(body['programming_id']),))

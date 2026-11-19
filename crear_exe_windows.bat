@@ -1,10 +1,13 @@
 ﻿@echo off
 setlocal EnableExtensions
+REM Fuerza UTF-8 en tests y PyInstaller (Windows usa cp1252 por defecto).
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 cd /d "%~dp0"
 title EvaluaFP - Preparar y compilar EXE
 echo.
 echo ========================================================
-echo  EVALUAFP 1.0.1 - CREAR EXE PARA WINDOWS
+echo  EVALUAFP 1.1.6 - CREAR EXE PARA WINDOWS
  echo ========================================================
 echo.
 echo [1/4] Detectando/instalando Python y dependencias...
@@ -14,14 +17,14 @@ set "PYTHON=%~dp0.venv\Scripts\python.exe"
 echo.
 echo [2/4] Comprobando el programa con las pruebas automatizadas...
 "%PYTHON%" -m unittest discover -s tests -v
-if errorlevel 1 goto :error
+if errorlevel 1 goto :tests_error
 echo.
 echo [3/4] Generando el ejecutable sin dependencia de Python externo...
 "%PYTHON%" -m PyInstaller --noconfirm --clean --onefile --windowed --name "EvaluaFP" --icon "assets\EvaluaFP.ico" --add-data "web;web" --collect-all fitz --collect-all PIL --collect-all docx --collect-all keyring --collect-all webview --collect-all reportlab --collect-all cryptography --collect-all xlsxwriter --hidden-import xlwt --hidden-import webview.platforms.winforms --hidden-import desktop_caption app.py
-if errorlevel 1 goto :error
+if errorlevel 1 goto :build_error
 if not exist "dist\EvaluaFP.exe" (
-  echo ERROR: PyInstaller no ha dejado el ejecutable en dist\EvaluaFP.exe.
-  echo Compruebe si Windows Defender lo ha puesto en cuarentena.
+  echo ERROR: No existe dist\EvaluaFP.exe tras finalizar PyInstaller.
+  echo Revise la salida de PyInstaller y, si es necesario, el historial del antivirus.
   goto :error
 )
 echo.
@@ -53,6 +56,15 @@ echo Compruebe su apertura real en Windows; debe mostrar ventana propia.
 if /i "%~1"=="/auto" exit /b 0
 pause
 exit /b 0
+:tests_error
+echo.
+echo ERROR: Las pruebas automatizadas han fallado; PyInstaller NO se ha ejecutado.
+echo Consulte el primer traceback de Python, no un supuesto bloqueo de Windows Defender.
+goto :error
+:build_error
+echo.
+echo ERROR: PyInstaller ha fallado. Compruebe los mensajes anteriores.
+goto :error
 :error
 echo.
 echo ERROR: Compilacion detenida. Consulte el mensaje anterior.

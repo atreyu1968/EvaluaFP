@@ -1,13 +1,19 @@
-"""Control de procedencia curricular: no completar CE ni pesos inexistentes."""
+"""Control de procedencia curricular, sin completar CE a partir de supuestos."""
 import re
 import unicodedata
 import ia
 
 def _source_normalize(value):
+    """Texto comparable sin modificar el contenido original presentado al docente."""
     value=unicodedata.normalize('NFKC',str(value or '')).casefold()
-    return re.sub(r'\s+',' ',value).strip()
+    return re.sub(r'\s+', ' ', value).strip()
 
-def _criterion_is_grounded(source_text,description,ra_number,letter):
+
+def _criterion_is_grounded(source_text, description, ra_number, letter):
+    """Un CE exige su enunciado literal y una etiqueta a)/RA2.a próxima.
+
+    No basta con que una frase sobre el mismo tema exista en cualquier sección.
+    """
     text=_source_normalize(source_text)
     desc=_source_normalize(description)
     if len(desc)<20 or len(desc.split())<4:return False
@@ -21,7 +27,9 @@ def _criterion_is_grounded(source_text,description,ra_number,letter):
         if re.search(marker,before,re.IGNORECASE):return True
         offset=at+len(desc)
 
+
 def analyze_program(program_text):
+    """Propuestas auditables: los CE nunca se completan desde conocimiento general."""
     if not program_text.strip():
         raise ValueError('El archivo no contiene texto extraíble; convierta un escaneo a texto antes de analizarlo.')
     if len(program_text)>110000:
@@ -34,13 +42,14 @@ JSON: {{"outcomes":[{{"code":"RA1","description":"enunciado literal completo del
 - Copia las descripciones literalmente, sin parafrasearlas ni completarlas. El programa verificará su coincidencia.
 - Los pesos se extraen SOLO si aparecen expresamente y son inequívocos. En ausencia de peso explícito: null. RA.weight se refiere al módulo, CE.weight al RA.
 - No confundas formación en empresa con un RA adicional. Señala toda suma incompatible con 100 % y toda contradicción curricular.
-DOCUMENTO:\n{program_text}"""
+DOCUMENTO:
+{program_text}"""
     result,model=ia.chat('analysis',prompt)
     if not isinstance(result,dict) or not isinstance(result.get('outcomes'),list):
         raise ValueError('La IA no devolvió una lista válida de RA/CE; revise la programación.')
     source=_source_normalize(program_text)
     observed=set(re.findall(r'(?<![a-z0-9])ra\s*([1-9]\d?)(?!\d)',source,re.I))
-    # El currículo oficial puede numerar resultados como «1. ...», sin prefijo RA.
+    # Los currículos oficiales pueden numerar los RA como «1. ...», sin prefijo RA.
     heading=re.search(r'(?i)resultados de aprendizaje y criterios de evaluaci[oó]n',program_text)
     if heading:
         block=program_text[heading.end():]
@@ -78,11 +87,12 @@ DOCUMENTO:\n{program_text}"""
             if not m:
                 discarded_ce+=1;continue
             letter=m.group(1).lower()
+            full_code=f'{code}.{letter}'
             desc=str(criterion.get('description','')).strip()
             if letter in letters or not _criterion_is_grounded(program_text,desc,match.group(1),letter):
                 discarded_ce+=1;continue
             letters.add(letter)
-            criteria.append(dict(criterion,code=f'{code}.{letter}',description=desc))
+            criteria.append(dict(criterion,code=full_code,description=desc))
         ra['criteria']=criteria
         valid.append(ra)
         if not criteria:
@@ -92,9 +102,12 @@ DOCUMENTO:\n{program_text}"""
     if discarded_ra:
         warnings.append(f'Se han descartado {discarded_ra} RA con datos ausentes, repetidos o no verificables.')
     missing=sorted((f'RA{n}' for n in observed if f'RA{n}' not in seen),key=lambda x:int(x[2:]))
-    if missing:warnings.append('RA citados sin descripción literal completa verificable: '+', '.join(missing)+'.')
+    if missing:
+        warnings.append('RA citados sin descripción literal completa verificable: '+', '.join(missing)+'.')
     if sum(len(r['criteria']) for r in valid)==0:
         warnings.append('No hay enunciados completos de CE verificables en este documento. No se generarán criterios inventados: incorpore la programación detallada o importe el currículo oficial y valide sus ponderaciones.')
-    return {'outcomes':valid,'warnings':list(dict.fromkeys(warnings)),'model':model,
+    # Los pesos no se reinterpretan ni se convierten automáticamente.
+    return {'outcomes':valid,'warnings':list(dict.fromkeys(warnings)), 'model':model,
             'coverage':{'ra_cited':len(observed),'ra_accepted':len(valid),'ce_proposed':ce_total,
                         'ce_accepted':sum(len(r['criteria']) for r in valid),'ce_discarded':discarded_ce}}
+

@@ -114,7 +114,7 @@ def fetch_official(module_name, boe_id=None, consent=False):
     parsed=parse_curriculum(document,module_name,expected)
     parsed.update({'source':'BOE','source_url':url,'source_id':boe_id,
         'consulted_at':datetime.now(timezone.utc).isoformat(timespec='seconds'),
-        'warnings':['Propuesta procedente del BOE: contraste su vigencia y las normas de desarrollo de Canarias antes de confirmarla.',
+        'warnings':['Propuesta procedente del BOE: contraste su vigencia y las normas de desarrollo de la administración educativa competente antes de confirmarla.',
                     'La normativa no asigna ponderaciones a los RA y CE de la programación. Se mantienen sin completar.'],
         'coverage':{'ra_cited':len(parsed['outcomes']),'ra_accepted':len(parsed['outcomes']),
                     'ce_proposed':sum(len(x['criteria']) for x in parsed['outcomes']),

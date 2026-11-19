@@ -34,16 +34,16 @@ class UnixDesktopTests(unittest.TestCase):
                  patch.object(storage_config.sys,'frozen',True,create=True),\
                  patch.object(storage_config.sys,'executable',str(exe)),\
                  patch.dict('os.environ',{'EVALUAFP_PORTABLE_HOME':''}):
-                self.assertEqual(storage_config._application_home(),root.resolve())
+                self.assertEqual(storage_config._application_home(),root)
 
     def test_explicit_portable_home_is_relative_to_usb(self):
         import storage_config
         with TemporaryDirectory() as t:
             with patch.dict('os.environ',{'EVALUAFP_PORTABLE_HOME':t}):
-                self.assertEqual(storage_config._application_home(),Path(t).resolve())
+                self.assertEqual(storage_config._application_home(),Path(t))
 
     def test_workflow_includes_three_architectures(self):
-        s=(Path(__file__).resolve().parents[1]/'.github/workflows/portables-linux-macos.yml').read_text()
+        s=(Path(__file__).resolve().parents[1]/'.github/workflows/portables-linux-macos.yml').read_text(encoding='utf-8')
         self.assertIn('ubuntu-22.04',s)
         self.assertIn('macos-15-intel',s)
         self.assertIn('macos-15',s)

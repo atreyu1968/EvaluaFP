@@ -1,8 +1,74 @@
+# EvalúaFP 1.2.1 beta — Revisión curricular RA/CE
+
+**Nueva funcionalidad integrada:** lectura local de RA/CE desde PDF, DOCX, TXT y Markdown con cita de página o párrafo, identificación por código de módulo, comparación con criterios existentes y ponderaciones iguales propuestas a dos decimales. La función **no sobrescribe notas ni RA/CE existentes**: genera una vista previa para revisión docente. Se mantienen las herramientas de programación, evaluación, FEOE y fuentes oficiales de 1.2.0.
+
+**Documentación:** [Cambios y límites 1.2.1](CAMBIOS_v121_BETA.md), [Guía del generador de programación](docs/GUIA_GENERADOR_INTELIGENTE_1.1.6.md) y [Fuentes normativas](docs/VERIFICACION_OFICIAL_1.2.0.md).
+
+**Distribución:** código fuente beta para Windows, Linux y macOS. Los ejecutables portátiles requieren compilación y comprobación en cada plataforma. **Antes de actualizar, haga copia de seguridad de la carpeta de datos y de SQLite**. La aplicación puede configurarse para los 19 ámbitos educativos españoles, pero no dispone todavía de un repositorio exhaustivo de todos los currículos oficiales autonómicos y cursos académicos.
+
+---
+
+# EvalúaFP 1.2.0 beta — Consulta normativa y anexos horarios oficiales
+
+**Novedades:** búsqueda de disposiciones candidatas en la API oficial del BOE, análisis de metadatos y modificaciones disponibles, lectura local de tablas horarias desde PDF/DOCX (OCR opcional si se instala Tesseract), revisión docente previa y protección frente a importar tablas de otro ciclo. Consulte [el documento de cambios](CAMBIOS_v120_BETA.md) y [la guía técnica](docs/VERIFICACION_OFICIAL_1.2.0.md).
+
+**Límites:** no existe todavía una base nacional completa de horas, RA/CE y calendarios verificados para todas las familias profesionales; no se aprueban normas por IA; las consultas vivas al BOE y la recompilación del portátil están pendientes de pruebas de aceptación externas. Este ZIP contiene fuentes, no nuevos EXE. Guarde copia de seguridad antes de actualizar.
+
+---
+
+# EvalúaFP 1.1.8 beta — Cobertura territorial nacional y calendarios versionados
+
+**Primera fase nacional:** el asistente admite 17 comunidades autónomas y Ceuta y Melilla. Cada programación queda asociada a una administración educativa y un curso académico. Si no hay calendario o carga horaria oficial identificada y contrastada, **no se completan automáticamente datos de otra comunidad** y se solicita verificación docente. Se conserva el motor de programación con IA, importación integral y programa mínimo FEOE de la beta anterior.
+
+**IMPORTANTE:** admitir 19 territorios **no significa disponer de un catálogo completo de currículos oficiales, módulos y calendarios de los 19 territorios**. Las horas verificadas se limitan actualmente a referencias parciales de Canarias; para otros módulos y territorios se requiere confirmación manual de la fuente y de las horas. No hay un servicio universal en tiempo real de normas/currículos.
+
+**Lea [los cambios, las instrucciones y los límites de la 1.1.8](CAMBIOS_v118_BETA.md).**
+
+**Instalación Windows:** haga primero copia de seguridad de los datos, extraiga las fuentes en una carpeta nueva y ejecute `CREAR_VERSION_PENDRIVE.bat`. Los ZIP entregados contienen **código fuente**, no ejecutables compilados. Conserve la versión portátil anterior hasta verificar el comportamiento en su ordenador.
+
+---
+
+# EvalúaFP 1.1.7.1 beta — Programa mínimo en empresa (FEOE)
+
+**Novedad:** desde la preparación del módulo se propone un **programa formativo mínimo en empresa** descargable por separado (Word/PDF), a partir de CE confirmados y con tareas y evidencias sencillas, editables y adaptables. La IA externa puede seleccionar CE transferibles y redactar propuestas si se configura una clave y se autoriza el envío; sin clave hay una propuesta local orientativa. **Nunca se considera un plan individual oficial aprobado**. Consulte [los cambios y limitaciones](CAMBIOS_v1171_FEOE_MINIMO.md).
+
+**Instalación Windows:** extraiga las fuentes en carpeta nueva y ejecute `CREAR_VERSION_PENDRIVE.bat`. Haga copia de seguridad de la versión anterior y sus datos. Los ZIP de fuentes no son EXE ya compilados.
+
+---
+
+# EvalúaFP Local 1.1.6 beta — Generador inteligente de programación
+
+**Novedades y límites:** [CAMBIOS_v116_BETA.md](CAMBIOS_v116_BETA.md).
+
+## Nueva beta 1.1.5.1 — Importación integral de programaciones
+
+Al utilizar «Ya tengo una programación», EvalúaFP ahora extrae **todos los apartados recuperables**, no solo RA y CE. Se ofrecen en un panel de revisión editable antes de incorporar datos a un borrador; se preservan los campos previamente editados, el original y los apartados sin clasificar. Las horas y la FEOE procedentes del documento se proponen por separado y deben confirmarse. Consulta [el informe de cambios](CAMBIOS_v1151_IMPORTACION.md).
+
+**Distribución:** código fuente beta. Para obtener un portátil Windows es necesario ejecutar `CREAR_VERSION_PENDRIVE.bat` en Windows después de realizar una copia de seguridad de los datos actuales. No sustituir el EXE público por un prototipo sin probar.
+
 # EvalúaFP Local
+
+## Actualización 1.1.2-beta — Auditoría de bloqueo y navegación
+
+Se han añadido límites a las consultas de la API local, cancelación de lecturas obsoletas, recuperación de errores con reintento y avisos visibles en acciones y cambios de selección. Se han corregido la generación de códigos de unidades didácticas tras eliminaciones intermedias y la detección del estado de los botones de materiales.
+
+**Pruebas:** 92 pruebas Python superadas y recorridos de Chromium con API simulada, incluidos fallos de servidor, navegación simultánea y seis pasos del asistente. Consulta el informe técnico en [`docs/INFORME_AUDITORIA_1.1.2.md`](docs/INFORME_AUDITORIA_1.1.2.md).
+
+La versión se distribuye como **fuentes revisadas**; no sustituye las aplicaciones portátiles compiladas anteriormente. Debe recompilarse en el sistema de destino.
+
+
+**Versión de trabajo: 1.1.2-beta — Inicio guiado y borradores de programación didáctica.**
+
+Esta evolución añade un menú por tareas, tres vías de preparación de módulos, importación de currículos con revisión visual, un asistente de programación con exportación DOCX/PDF/Markdown y generación de exámenes simplificada. Las herramientas detalladas de la versión 1.0.6 siguen disponibles. No hay aprobación automática de programaciones ni cambios silenciosos de RA, CE, ponderaciones o calificaciones.
+
+> **Estado de distribución:** se ofrece el código fuente beta y las instrucciones para compilar. Los antiguos binarios 1.0.6 no incluyen esta actualización. Consulte [Guía del inicio guiado](docs/INICIO_GUIADO_v1.1.md) y [Cambios 1.1 beta](CAMBIOS_v110_BETA.md).
+
+---
+
 
 **Aplicación local para la creación, corrección asistida y evaluación de instrumentos de Formación Profesional, organizada por resultados de aprendizaje (RA) y criterios de evaluación (CE).**
 
-**Versión del código:** 1.0.6 · **Desarrollador:** Francisco Javier González Rolo · **Sistema principal:** Windows 10/11 (x64) · **Base de datos:** SQLite · **Interfaz:** HTML/CSS/JavaScript con ventana WebView2.
+**Versión del código:** 1.1.2-beta · **Desarrollador:** Francisco Javier González Rolo · **Sistema principal:** Windows 10/11 (x64) · **Base de datos:** SQLite · **Interfaz:** HTML/CSS/JavaScript con ventana WebView2.
 
 > **Estado:** proyecto en desarrollo. La ejecución automatizada de 72 pruebas ha concluido correctamente en el entorno de desarrollo; la compilación, la ventana gráfica y el instalador deben verificarse en Windows antes de distribuir la aplicación. La calificación definitiva requiere validación docente.
 
@@ -221,6 +287,39 @@ Para aplicar el parche sobre el código 1.0.2, sustituye `app.py`,
 `web/index.html` y añade `tests/test_multipart_unicode.py`. Después ejecuta
 `crear_exe_windows.bat` o `CREAR_VERSION_PENDRIVE.bat`.
 
-## Apoyar el proyecto
+## Compilaciones portátiles para Linux y macOS
 
-EvalúaFP es gratuita. Si deseas colaborar con su mantenimiento y documentación, puedes realizar una [aportación voluntaria por PayPal](https://www.paypal.com/donate/?hosted_button_id=VX6XGDBJS39W6). No es obligatorio para acceder a ninguna función. El uso de API externas de IA puede tener costes independientes.
+EvalúaFP puede compilarse **sin Python en el equipo de destino** para Linux x64 y para Mac Intel o Apple Silicon. Cada paquete debe generarse en su propio sistema operativo, por lo que el repositorio incluye el workflow **Actions → Compilar portátiles Linux y macOS**. Consulte [el manual de portabilidad](docs/PORTABLE_LINUX_MAC.md).
+
+El archivo `.github/workflows/portables-linux-macos.yml` prepara tres artefactos descargables; el proceso usa PyInstaller y ejecuta pruebas, incluida una prueba `--selftest` del binario. **Hasta probarlo en equipos reales, el soporte debe considerarse experimental**. Linux puede necesitar bibliotecas gráficas/Qt en el sistema; en macOS se recomienda firmar y notarizar los `.app` para distribución pública. Los datos y las claves API siguen locales y en modo USB la configuración se guarda fuera de la aplicación.
+
+Para compilar en Linux o Mac con Python 3.13 disponible:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements-build.txt
+python scripts/build_portable_unix.py --test
+```
+
+El formato de distribución será `.tar.gz` en Linux y `.zip` con `.app` en Mac, adecuados para añadirlos a la carpeta `descargas/` de la landing. La compilación Windows y el instalador Inno Setup se mantienen por separado.
+
+
+## Actualización 1.1.1-beta — Corrección de «Preparar módulo»
+
+Se ha corregido el bloqueo de la interfaz en «Cargando…» al seleccionar «Preparar módulo». El controlador mostraba la animación, pero no invocaba el componente guiado. Ahora se llama a `viewPrepare()` y se muestra un error legible si una sección futura no está reconocida.
+
+**Pruebas:** 84 pruebas existentes y prueba de regresión de navegación; recorrido de UI en navegador con API HTTP real y datos ficticios: alta de módulo, elección de ruta curricular y acceso a importación.
+
+**Actualización del EXE portátil:** un ejecutable PyInstaller contiene su copia de `web/app.js` dentro del paquete. No basta con sustituir el JavaScript de la landing pública: debe recompilarse desde estas fuentes. Antes de instalar o ejecutar una nueva versión en un USB con calificaciones reales, realice copia de seguridad del SQLite y los documentos.
+
+## Beta 1.1.3 — Temporalización curricular, calendario lectivo, FEOE y Gantt
+
+Se incorpora al paso 5 del asistente una planificación **editable** con horas semanales, horas por día, horas totales del módulo, calendario de Canarias 2026-2027, cierres de evaluaciones, días no lectivos del centro, unidades y CE, selección de CE para FEOE, horas de docencia en el centro durante FEOE, instrumentos y recursos por unidad, actividades complementarias y extraescolares. El paso 6 muestra el Gantt semanal y la exportación DOCX/PDF incluye portada e índice. **No se alteran calificaciones ni los pesos docentes existentes.**
+
+La cifra del 10–20 % de CE es **orientativa**; la normativa de FEOE regula RA y duración del periodo, que han de verificarse para el ciclo. Esta beta añade 8 pruebas específicas a las 92 de 1.1.2. Véase [Temporalización y FEOE](docs/TEMPORALIZACION_FEOE_1.1.3.md).
+
+
+## Beta 1.1.9 — Biblioteca nacional de fuentes y horas
+
+El asistente incluye accesos a portales de FP de los 19 ámbitos educativos, importación de cuadros horarios completos desde Excel/CSV, almacenamiento de fuentes revisadas y calendarios del centro vinculados al territorio y curso, y un intérprete opcional con IA que exige cita literal. No hay un catálogo nacional completo de horas preinstalado ni verificación automática de vigencia. Consulte [Cambios 1.1.9](CAMBIOS_v119_BETA.md) y [guía técnica de fuentes nacionales](docs/FUENTES_NACIONALES_1.1.9.md).
