@@ -37,3 +37,7 @@ Los textos y documentos curriculares no se envían a servicios externos en esta 
 ### Corrección de pruebas multiplataforma
 
 Las pruebas de rutas portátiles comparan rutas canónicas resueltas para admitir en Windows los alias de nombre corto 8.3 (`RUNNER~1`) frente a su ruta larga, sin modificar la ubicación efectiva ni los datos de los usuarios. Esta corrección se comprobó tras detectar fallos en GitHub Actions de Windows.
+
+### Hotfix de rutas USB en Windows
+
+GitHub Actions detectó que Windows expone algunas carpetas temporales tanto con su nombre corto 8.3 como con el nombre largo. `storage_config.py` normaliza ahora la ruta de origen y de destino antes de comprobar que están en el mismo USB, calcular rutas relativas y migrar SQLite, evitando falsos rechazos y rutas incorrectas en la configuración portátil. No se altera la ubicación real de los datos.
