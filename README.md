@@ -1,3 +1,11 @@
+# EvalúaFP 1.2.9 beta — Anexos escolares complejos e IA con citas verificables
+
+**Nueva fase de temporalización:** reconstrucción local de determinadas tablas FP de PDF/Word con cabeceras por etapa y fechas, asociación conservadora de líneas contiguas y preparación de un fragmento editable para IA. La **IA es optativa** y solo recibe el fragmento explícitamente autorizado; las fechas y citas se comprueban contra ese texto. Todas las propuestas requieren revisión del docente y quedan sin confirmar. [Novedades 1.2.9](CAMBIOS_v129_BETA.md) · [Guía práctica](docs/CALENDARIOS_ANEXOS_IA_1.2.9.md).
+
+**Límites:** el cotejo de citas no certifica la autenticidad o vigencia normativa de un documento; no existen aún calendarios completos para los 19 ámbitos. La lectura OCR depende del equipo y no se ha recompilado un ejecutable por esta versión. Se entrega código fuente beta.
+
+---
+
 # EvalúaFP 1.2.8 beta — Importar fechas desde resoluciones de calendario
 
 **Nueva fase:** lectura local de archivos PDF, DOCX, TXT y Markdown con una vista previa de fechas literales, su procedencia (página/párrafo/fila) y avisos de ambigüedad. El docente selecciona las fechas que desea llevar a un borrador **sin confirmar**, sin modificar datos de evaluación. Se verifica que el archivo mencione comunidad, curso y FP antes de habilitar la carga. [Novedades 1.2.8](CAMBIOS_v128_BETA.md) · [Guía técnica](docs/EXTRACCION_CALENDARIO_1.2.8.md).
