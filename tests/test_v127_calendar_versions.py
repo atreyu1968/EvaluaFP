@@ -114,6 +114,26 @@ class VersionedCalendarTests(unittest.TestCase):
                         (6,json.dumps(d,ensure_ascii=False),'2026-11-20'))
         self.assertEqual(versions.list_versions(self.db,6)['count'],1)
 
+    def test_same_named_centres_in_different_municipalities_keep_own_versions(self):
+        self.draft(mid=1, municipality='Madrid',start='2026-09-14')
+        registry.save_calendar(self.db,1,{'teacher_confirmed':True})
+        self.add_module(2,'Comunidad de Madrid','2026-2027')
+        self.draft(mid=2, municipality='Alcalá de Henares',start='2026-09-21')
+        registry.save_calendar(self.db,2,{'teacher_confirmed':True})
+        first=registry.find_calendar(self.db,1)
+        second=registry.find_calendar(self.db,2)
+        self.assertEqual(first['schedule']['start_date'],'2026-09-14')
+        self.assertEqual(second['schedule']['start_date'],'2026-09-21')
+        self.assertEqual(versions.list_versions(self.db,1)['count'],1)
+        self.assertEqual(versions.list_versions(self.db,2)['count'],1)
+
+    def test_legacy_custom_canary_calendar_does_not_inherit_boc_correction(self):
+        cfg=schedule_engine.defaults('2026-2027','Canarias')
+        del cfg['calendar_correction_urls']
+        cfg['calendar_source_url']='https://www.example.org/centro/calendario'
+        normalised=schedule_engine.clean(cfg,'2026-2027')
+        self.assertEqual(normalised['calendar_correction_urls'],[])
+
     def test_reject_unconfirmed_non_https_and_dates_of_another_course(self):
         self.draft()
         with self.assertRaises(ValueError):registry.save_calendar(self.db,1,{'teacher_confirmed':False})
