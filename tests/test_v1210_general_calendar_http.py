@@ -88,7 +88,7 @@ class GeneralCalendarHTTPTests(unittest.TestCase):
         self.assertEqual(updated['record']['revision'],2)
         status,diff=self.request(
             f'api/national/general-calendar/compare?module_id={mid}&old={first}&new={second}')
-        self.assertEqual(status,200)
+        self.assertEqual(status,200, diff)
         self.assertIn('start_date',[x['field'] for x in diff['changes']])
         _,newlist=self.request(path)
         self.assertEqual(newlist['count'],2)
