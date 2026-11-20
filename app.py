@@ -504,6 +504,16 @@ class Handler(BaseHTTPRequestHandler):
                     year=(args.get('academic_year') or [''])[0]
                     search_term=(args.get('q') or [''])[0]
                     return self.send(fp_catalog.search(d,region,year,search_term))
+                if path=='/api/national/calendar/versions':
+                    import calendar_versions
+                    mid=int((args.get('module_id') or ['0'])[0])
+                    return self.send(calendar_versions.list_versions(d,mid))
+                if path=='/api/national/calendar/compare':
+                    import calendar_versions
+                    mid=int((args.get('module_id') or ['0'])[0])
+                    old=int((args.get('old') or ['0'])[0])
+                    new=int((args.get('new') or ['0'])[0])
+                    return self.send(calendar_versions.compare_versions(d,mid,old,new))
                 if path=='/api/national/sources':
                     import national_registry
                     mid=int((args.get('module_id') or ['0'])[0])
