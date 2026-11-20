@@ -90,7 +90,7 @@ class GeneralCalendarHTTPTests(unittest.TestCase):
         import general_calendar_library
         with database.connect() as db:
             rows=[dict(x) for x in db.execute(
-                'SELECT id,territory_code,academic_year,stage FROM national_general_fp_calendars').fetchall()]
+                'SELECT id,territory_code,academic_year,stage FROM national_general_fp_calendars ORDER BY id').fetchall()]
             actual=[(x['id'],x['territory_code'],x['academic_year'],x['stage']) for x in rows]
             expected=[(first,'MD','2026-2027','fp_grado_d'),
                       (second,'MD','2026-2027','fp_grado_d')]
