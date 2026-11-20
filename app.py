@@ -896,8 +896,10 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/api/national/general-calendar/save':
             import general_calendar_library
             with data.connect() as d:
-                return self.send({'record':general_calendar_library.save_from_module(
-                    d,int(body.get('module_id',0)),body)})
+                record=general_calendar_library.save_from_module(
+                    d,int(body.get('module_id',0)),body)
+            # Responder únicamente DESPUÉS de confirmar la transacción SQLite.
+            return self.send({'record':record})
         if path=='/api/national/save-calendar':
             import national_registry
             mid=int(body.get('module_id',0))
