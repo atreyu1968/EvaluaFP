@@ -59,6 +59,15 @@ class CalendarDocumentTests(unittest.TestCase):
             if region!='Canarias':
                 self.assertFalse(self.preview(region=region)['scope_ok'])
 
+    def test_heading_of_other_educational_stage_blocks_following_dates(self):
+        text=(DOCUMENT+'\nBachillerato\nInicio de las clases: 15 de septiembre de 2026.\n'
+             'Fin de las clases: 20 de junio de 2027.\n')
+        report=self.preview(text)
+        self.assertEqual(report['candidates']['start_date'][0]['value'],'2026-09-16')
+        self.assertEqual(report['candidates']['end_date'][0]['value'],'2027-06-22')
+        self.assertEqual(len(report['candidates']['start_date']),1)
+        self.assertEqual(len(report['candidates']['end_date']),1)
+
     def test_bad_extensions_magic_size_and_out_of_year(self):
         for name,blob in [('example.exe',b'abc'),('scan.pdf',b'PDF-content'),('fake.docx',b'fake')]:
             with self.subTest(name=name),self.assertRaises(ValueError):
