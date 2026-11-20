@@ -89,6 +89,13 @@ def clean(raw, academic_year='2026-2027'):
     if unknown:
         raise ValueError('Campos de temporalización no reconocidos: ' + ', '.join(sorted(unknown)))
     base.update(raw)
+    # Las migraciones antiguas no deben heredar una corrección del calendario
+    # genérico de Canarias si su fuente principal era una disposición distinta.
+    if raw and 'calendar_correction_urls' not in raw:
+        original_source=str(raw.get('calendar_source_url') or '')
+        default_source=str(defaults(academic_year,raw_region,raw_island)['calendar_source_url'])
+        if original_source != default_source:
+            base['calendar_correction_urls']=[]
     for key in ('weekly_hours', 'total_hours', 'feoe_target_percent'):
         try:
             val = float(base[key])
