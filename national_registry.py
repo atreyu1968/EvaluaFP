@@ -196,6 +196,17 @@ def find_calendar(db,module_id):
     module,draft,code=scope(db,module_id)
     center=str(draft.get('center') or '').strip()
     if not center:return None
+    # Preferir la versión del centro y MUNICIPIO/ISLA exactos. Una tabla
+    # heredada solo por nombre de centro no debe mezclar localidades.
+    import calendar_versions
+    history=calendar_versions.list_versions(db,module_id)
+    if history['versions']:
+        latest=history['versions'][0]
+        return {'territory_code':code,'academic_year':module['academic_year'],
+            'center':center, 'schedule':{**latest['schedule'],'calendar_confirmed':False},
+            'source_url':latest['source_url'],'source_title':latest['source_title'],
+            'checked_at':latest['reviewed_at'],'status':'revisado_por_docente_en_historial_local',
+            'notice':'Calendario archivado para este centro, municipio, isla y curso. Revise las disposiciones recientes antes de volver a confirmarlo.'}
     row=db.execute('''SELECT * FROM national_center_calendars WHERE territory_code=?
       AND academic_year=? AND center_key=?''',
         (code,module['academic_year'],territories.fold(center))).fetchone()
