@@ -96,6 +96,8 @@ def migrate(db):
         checked_at TEXT NOT NULL,
         teacher_confirmed INTEGER NOT NULL DEFAULT 1,
         PRIMARY KEY(territory_code,academic_year,center_key))''')
+    import calendar_versions
+    calendar_versions.migrate(db)
 
 
 def valid_url(raw):
@@ -223,7 +225,7 @@ def save_calendar(db,module_id,payload):
     fields=['region','island','municipality','start_date','end_date','evaluation_ends',
             'vacation_periods','regional_non_teaching_days','extra_non_teaching_days',
             'calendar_profile_id','calendar_academic_year','calendar_source_url',
-            'calendar_source_description','calendar_confirmed']
+            'calendar_source_description','calendar_correction_urls','calendar_confirmed']
     calendar={key:cfg[key] for key in fields}
     db.execute('''INSERT INTO national_center_calendars
         (territory_code,academic_year,center_key,center_name,configuration_json,source_url,source_title,checked_at)
@@ -233,9 +235,11 @@ def save_calendar(db,module_id,payload):
         source_url=excluded.source_url,source_title=excluded.source_title,checked_at=excluded.checked_at''',
         (code,module['academic_year'],territories.fold(center),center,
          json.dumps(calendar,ensure_ascii=False),source,title,database.now()))
+    import calendar_versions
+    version=calendar_versions.record_from_draft(db,module_id,cfg)
     database.log(db,'local_center_calendar_confirmed','module',module_id,
                  {'territory':code,'academic_year':module['academic_year'],'center':center})
-    return find_calendar(db,module_id)
+    return {**find_calendar(db,module_id),'revision':version}
 
 
 def propose_module_sources(db,module_id):
