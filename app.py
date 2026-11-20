@@ -39,7 +39,7 @@ import schedule_engine
 import program_importer
 import program_assistant
 
-APP_VERSION = "1.2.8-beta"
+APP_VERSION = "1.2.9-beta"
 TOKEN = secrets.token_urlsafe(32)
 WEB = (Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'web')
 
@@ -817,6 +817,19 @@ class Handler(BaseHTTPRequestHandler):
             report['existing_ra_count']=len(existing)
             report['can_auto_apply']=False
             return self.send(report)
+        if path=='/api/national/calendar-ai-interpret':
+            import calendar_ai
+            if body.get('authorize_ai') is not True:
+                raise ValueError('Debe autorizar expresamente el envío del fragmento de calendario.')
+            mid=int(body.get('module_id',0))
+            with data.connect() as d:
+                module=must_row(d,'SELECT territory,academic_year FROM modules WHERE id=?',(mid,))
+                region=territories.require_territory(body.get('region',''))
+                year=territories.year_code(body.get('academic_year',''))
+                if territories.require_territory(module['territory'])!=region or module['academic_year']!=year:
+                    raise ValueError('Territorio o curso distinto del módulo guardado. Guarde primero los cambios.')
+            # No almacena el fragmento ni las propuestas; solo transmite el texto autorizado.
+            return self.send(calendar_ai.interpret(body.get('fragment',''),region,year,True))
         if path=='/api/national/calendar-document-preview':
             import calendar_document
             mid=int(fields.get('module_id','0'))

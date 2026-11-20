@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 
 import territorial_profiles as territories
+import calendar_annex
 
 MAX_FILE = 15 * 1024 * 1024
 MAX_PAGES = 80
@@ -80,10 +81,12 @@ def _records_from_docx(blob):
             if paragraph.text.strip():
                 records.append({'text': paragraph.text, 'location': f'párrafo {i}'})
         for j, table in enumerate(doc.tables, 1):
-            for i, row in enumerate(table.rows, 1):
-                value=' | '.join(c.text.strip().replace('\n',' ') for c in row.cells)
+            matrix=[[cell.text for cell in row.cells] for row in table.rows]
+            for i, cells in enumerate(matrix, 1):
+                value=' | '.join(c.strip().replace('\n',' ') for c in cells)
                 if value.strip(' |'):
                     records.append({'text': value, 'location': f'tabla {j}, fila {i}'})
+            records.extend(calendar_annex.table_records(matrix,f'tabla {j}'))
         return records, False, 0, []
     except Exception as exc:
         raise ValueError('No se puede leer el documento Word; compruebe el archivo.') from exc
@@ -114,9 +117,17 @@ def _records_from_pdf(blob, allow_ocr):
                     scanned+=1;used=True
                 else:
                     warnings.append(f'Página {n}: sin texto seleccionable; no se ha aplicado OCR.')
-            for line in value.splitlines():
-                if line.strip():
-                    records.append({'text':line, 'location':f'página {n}'})
+            page_records=[{'text':line,'location':f'página {n}'}
+                          for line in value.splitlines() if line.strip()]
+            records.extend(calendar_annex.stitched_records(
+                page_records,DATE_RE,RANGE_RE,START_RE,END_RE,SCHOOL_RE,VACATION_RE))
+            if hasattr(page,'find_tables'):
+                try:
+                    for j,table in enumerate(page.find_tables().tables,1):
+                        records.extend(calendar_annex.table_records(table.extract(),
+                                     f'página {n}, tabla {j}'))
+                except Exception:
+                    warnings.append(f'Página {n}: no se pudieron inspeccionar las tablas; revise el texto y las celdas.')
     return records,used,scanned,warnings
 
 
@@ -149,9 +160,10 @@ def _candidates(records, academic_year):
     # Se limita la extracción a líneas/filas que ofrezcan una relación explícita
     # con el concepto. No se rellena nunca un año ausente en el texto.
     for row in records[:MAX_RECORDS]:
-        original=' '.join(row['text'].split())[:450]
-        if not original:continue
-        folded=territories.fold(original)
+        text=' '.join(row['text'].split())[:450]
+        original=' '.join(row.get('excerpt',row['text']).split())[:450]
+        if not text:continue
+        folded=territories.fold(text)
         current_page=row['location'] if row['location'].startswith('página ') else None
         if current_page and previous_page and current_page!=previous_page:
             active_stage=None
@@ -229,6 +241,31 @@ def _candidates(records, academic_year):
     return grouped,warnings
 
 
+def _fragment_for_optional_ai(records, region, academic_year):
+    """Prepara únicamente texto local para revisión; jamás lo envía a la IA.
+
+    Conserva el contexto territorial/etapa/año y fragmentos de fechas/tablas,
+    sin usar cifras sueltas como si fueran confirmadas. El docente lo edita.
+    """
+    terms=TERRITORY_ALIASES[territories.territory_code(region)]
+    selected=[];seen=set()
+    for index,row in enumerate(records):
+        raw=' '.join(row.get('excerpt',row['text']).split())[:450]
+        folded=territories.fold(raw)
+        scoped=(any(re.search(r'(?<!\w)'+re.escape(term)+r'(?!\w)',folded) for term in terms)
+                or academic_year in folded or bool(FP_RE.search(folded)))
+        date_related=bool(DATE_RE.search(folded)) or (
+            bool(START_RE.search(folded) or END_RE.search(folded) or VACATION_RE.search(folded))
+            and bool(SCHOOL_RE.search(folded) or VACATION_RE.search(folded)))
+        if not ((scoped and index<100) or date_related):continue
+        if raw in seen:continue
+        seen.add(raw)
+        if len('\n'.join(selected))+len(raw)>10500:break
+        selected.append(raw)
+        if len(selected)>=95:break
+    return '\n'.join(selected)
+
+
 def preview_document(filename, blob, region, academic_year, allow_ocr=False):
     """Analiza un archivo local, sin guardar originales ni tocar calificaciones.
 
@@ -276,7 +313,9 @@ def preview_document(filename, blob, region, academic_year, allow_ocr=False):
             'scope':{'territory_match':territory_match,'academic_year_match':year_match,'fp_match':stage_match,
                      'courses_in_document':sorted(years)},
             'candidates':values,'candidate_count':count,'warnings':list(dict.fromkeys(warnings))[:40],
-            'ocr_used':ocr,'ocr_pages':ocr_pages,'requires_teacher_confirmation':True,
+            'ocr_used':ocr,'ocr_pages':ocr_pages,
+            'suggested_ai_fragment':_fragment_for_optional_ai(records,region,academic_year) if scope_ok else '',
+            'requires_teacher_confirmation':True,
             'no_changes_saved':True,'source_type':kind,
             'notice':('Vista previa textual, no comprobación de vigencia. Compruebe que las fechas corresponden a FP Grado D, '
                       'a su centro y a la última disposición/corrección. No se incorporarán horas, evaluaciones, FEOE ni notas.')}
