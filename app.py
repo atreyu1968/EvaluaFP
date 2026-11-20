@@ -39,7 +39,7 @@ import schedule_engine
 import program_importer
 import program_assistant
 
-APP_VERSION = "1.2.9-beta"
+APP_VERSION = "1.2.10-beta"
 TOKEN = secrets.token_urlsafe(32)
 WEB = (Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'web')
 
@@ -504,6 +504,16 @@ class Handler(BaseHTTPRequestHandler):
                     year=(args.get('academic_year') or [''])[0]
                     search_term=(args.get('q') or [''])[0]
                     return self.send(fp_catalog.search(d,region,year,search_term))
+                if path=='/api/national/general-calendar':
+                    import general_calendar_library
+                    mid=int((args.get('module_id') or ['0'])[0])
+                    return self.send(general_calendar_library.list_for_module(d,mid))
+                if path=='/api/national/general-calendar/compare':
+                    import general_calendar_library
+                    mid=int((args.get('module_id') or ['0'])[0])
+                    old=int((args.get('old') or ['0'])[0])
+                    new=int((args.get('new') or ['0'])[0])
+                    return self.send(general_calendar_library.compare(d,mid,old,new))
                 if path=='/api/national/calendar/versions':
                     import calendar_versions
                     mid=int((args.get('module_id') or ['0'])[0])
@@ -883,6 +893,13 @@ class Handler(BaseHTTPRequestHandler):
             with data.connect() as d:
                 result=national_registry.save_hours(d,mid,body)
             return self.send({'saved':True,'record':result})
+        if path=='/api/national/general-calendar/save':
+            import general_calendar_library
+            with data.connect() as d:
+                record=general_calendar_library.save_from_module(
+                    d,int(body.get('module_id',0)),body)
+            # Responder únicamente DESPUÉS de confirmar la transacción SQLite.
+            return self.send({'record':record})
         if path=='/api/national/save-calendar':
             import national_registry
             mid=int(body.get('module_id',0))

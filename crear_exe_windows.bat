@@ -7,7 +7,7 @@ cd /d "%~dp0"
 title EvaluaFP - Preparar y compilar EXE
 echo.
 echo ========================================================
-echo  EVALUAFP 1.1.6 - CREAR EXE PARA WINDOWS
+echo  EVALUAFP 1.2.10 BETA - CREAR EXE PARA WINDOWS
  echo ========================================================
 echo.
 echo [1/4] Detectando/instalando Python y dependencias...
@@ -20,7 +20,7 @@ echo [2/4] Comprobando el programa con las pruebas automatizadas...
 if errorlevel 1 goto :tests_error
 echo.
 echo [3/4] Generando el ejecutable sin dependencia de Python externo...
-"%PYTHON%" -m PyInstaller --noconfirm --clean --onefile --windowed --name "EvaluaFP" --icon "assets\EvaluaFP.ico" --add-data "web;web" --collect-all fitz --collect-all PIL --collect-all docx --collect-all keyring --collect-all webview --collect-all reportlab --collect-all cryptography --collect-all xlsxwriter --hidden-import xlwt --hidden-import webview.platforms.winforms --hidden-import desktop_caption app.py
+"%PYTHON%" -m PyInstaller --noconfirm --clean --onefile --windowed --name "EvaluaFP" --icon "assets\EvaluaFP.ico" --add-data "web;web" --collect-all fitz --collect-all PIL --collect-all docx --collect-all keyring --collect-all webview --collect-all reportlab --collect-all cryptography --collect-all xlsxwriter --hidden-import xlwt --hidden-import webview.platforms.winforms --hidden-import desktop_caption --hidden-import general_calendar_library --hidden-import calendar_versions --hidden-import calendar_document --hidden-import calendar_annex --hidden-import calendar_ai app.py
 if errorlevel 1 goto :build_error
 if not exist "dist\EvaluaFP.exe" (
   echo ERROR: No existe dist\EvaluaFP.exe tras finalizar PyInstaller.

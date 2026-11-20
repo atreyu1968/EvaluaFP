@@ -1,3 +1,11 @@
+# EvalúaFP 1.2.10 beta — Biblioteca territorial de calendarios generales FP
+
+**Nueva función:** archivar, versionar, comparar y reutilizar fechas generales de calendario escolar de FP **por comunidad o ámbito educativo y curso académico**, con fuente y confirmación docente. La biblioteca excluye municipio, isla, días propios del centro, evaluaciones, horas, FEOE y notas. Las fechas se cargan solo como **borrador pendiente de confirmación**, y las fiestas insulares conocidas no pueden registrarse como generales para Canarias. [Cambios 1.2.10](CAMBIOS_v1210_BETA.md) · [Instrucciones](docs/BIBLIOTECA_CALENDARIOS_GENERALES_1.2.10.md).
+
+**Alcance:** hay soporte informático para los 19 ámbitos, pero no están precargados ni contrastados todos sus calendarios oficiales. «Revisado por docente» no acredita vigencia jurídica. Es código fuente beta; no se han recompilado ejecutables nativos. **Compilación Windows:** ejecutar `crear_exe_windows.bat`.
+
+---
+
 # EvalúaFP 1.2.9 beta — Anexos escolares complejos e IA con citas verificables
 
 **Nueva fase de temporalización:** reconstrucción local de determinadas tablas FP de PDF/Word con cabeceras por etapa y fechas, asociación conservadora de líneas contiguas y preparación de un fragmento editable para IA. La **IA es optativa** y solo recibe el fragmento explícitamente autorizado; las fechas y citas se comprueban contra ese texto. Todas las propuestas requieren revisión del docente y quedan sin confirmar. [Novedades 1.2.9](CAMBIOS_v129_BETA.md) · [Guía práctica](docs/CALENDARIOS_ANEXOS_IA_1.2.9.md).
