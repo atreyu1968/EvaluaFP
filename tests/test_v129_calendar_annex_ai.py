@@ -67,6 +67,28 @@ class CalendarAnnexTests(unittest.TestCase):
         self.assertIn('página 1',report['candidates']['start_date'][0]['location'])
 
 
+    def test_optional_ai_excerpt_is_prepared_locally_with_scope_and_full_dates(self):
+        report=calendar_document.preview_document('calendario.txt',
+                  FRAGMENT.encode('utf-8'),'Canarias','2026-2027')
+        fragment=report['suggested_ai_fragment']
+        self.assertIn('Canarias',fragment)
+        self.assertIn('2026-2027',fragment)
+        self.assertIn('16/09/2026',fragment)
+        self.assertTrue(report['no_changes_saved'])
+        wrong=calendar_document.preview_document('calendario.txt',
+                  FRAGMENT.encode('utf-8'),'Comunidad de Madrid','2026-2027')
+        self.assertEqual(wrong['suggested_ai_fragment'],'')
+
+    def test_stitched_fragments_never_cross_pages(self):
+        parts=[{'text':'Inicio de clases de FP','location':'página 1'},
+               {'text':'16/09/2026','location':'página 2'}]
+        extracted=calendar_annex.stitched_records(
+            parts,calendar_document.DATE_RE,calendar_document.RANGE_RE,
+            calendar_document.START_RE,calendar_document.END_RE,
+            calendar_document.SCHOOL_RE,calendar_document.VACATION_RE)
+        self.assertEqual(len(extracted),2)
+
+
 class CalendarAIGuardsTests(unittest.TestCase):
     def run_model(self,proposals,fragment=FRAGMENT,consent=True):
         with patch.object(calendar_ai.ia,'chat',return_value=({'proposals':proposals},'modelo_pruebas')) as mock:
