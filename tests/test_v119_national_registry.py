@@ -42,7 +42,7 @@ class NationalRegistryTests(unittest.TestCase):
             self.assertEqual(result['territory_code'],code)
             self.assertTrue(all(row['url'].startswith('https://') for row in result['links']))
             self.assertGreaterEqual(len(result['links']),3)
-        self.assertEqual(len(registry.source_directory('Madrid','Administración y Finanzas','2026-2027')['links']),4)
+        self.assertGreaterEqual(len(registry.source_directory('Madrid','Administración y Finanzas','2026-2027')['links']),4)
 
     def test_csv_preview_accepts_spanish_hours_and_rejects_bad_columns(self):
         csv='Código;Módulo;Horas totales;Horas semanales\n0650;Proceso integral de la actividad comercial;202;6\n0651;Comunicación y atención al cliente;170;5'

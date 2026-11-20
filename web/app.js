@@ -4,7 +4,7 @@ const S = {page:'inicio', modules:[], moduleId:null, moduleDetails:null, exams:[
   uploadExamId:null, uploadStudentId:null, queue:[], pageIndex:0, proposal:null, aiSettings:null, busy:false, manualDraft:null};
 S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.nationalDocumentPreview=null;
 S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.curriculumSourceFile=null;S.curriculumSourceKind='';
-S.curriculumReview=null;S.feoeMinimumPreview=null;S.aiPreview=null;S.unitProposal=null;S.autoProposedModuleId=null;S.importPreview=null;S.preparePath=null;S.prepareStep=0;S.wizardDraft=null;S.prepareInfo=null;S.advanced=false;S.creatingModule=false;
+S.catalogResults=null;S.catalogPreview=null;S.catalogPreviewScope=null;S.catalogTableText='';S.catalogPicked=null;S.curriculumReview=null;S.feoeMinimumPreview=null;S.aiPreview=null;S.unitProposal=null;S.autoProposedModuleId=null;S.importPreview=null;S.preparePath=null;S.prepareStep=0;S.wizardDraft=null;S.prepareInfo=null;S.advanced=false;S.creatingModule=false;
 const E = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const V = v=>v==null?'No indicada':String(v)+' %';
 const $ = sel=>document.querySelector(sel);
@@ -265,6 +265,41 @@ function boeDiscoveryPanel(){
  <button class="btn secondary" type="button" data-action="national-boe-add">Añadir a mi borrador como norma pendiente de revisión</button></div></div>`:''}
  </section>`;
 }
+function catalogCreationForm(){return $('#prepare-create')||$('#create-module');}
+function catalogScopeFromForm(){
+ const form=catalogCreationForm();if(!form)throw Error('Abra primero el formulario de creación de un módulo.');
+ return {region:form.elements.territory?.value||'',academic_year:form.elements.academic_year?.value.trim()||''};
+}
+function catalogResultsMarkup(){
+ const data=S.catalogResults;
+ const preview=S.catalogPreview;
+ return `${data?`<p class="small">${data.count} módulos encontrados para ${E(data.territory)} · ${E(data.academic_year)}. ${E(data.notice)}</p>
+ ${data.entries?.length?`<div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Ciclo y código</th><th>Módulo</th><th>Procedencia</th><th></th></tr></thead><tbody>
+ ${data.entries.map(entry=>`<tr><td><b>${E(entry.title_name)}</b><br>${E(entry.title_code)} · ${E(entry.grade)} · ${E(entry.family)}</td><td>${E(entry.module_code)} · ${E(entry.module_name)}</td><td><a href="${E(entry.source_url)}" target="_blank" rel="noopener noreferrer">Consultar fuente</a></td>
+ <td><button type="button" class="btn mutedbtn smallbtn" data-action="catalog-choose" data-catalog-id="${entry.id}">Utilizar módulo</button></td></tr>`).join('')}</tbody></table></div>`:'<p class="hint">No existen fichas locales que coincidan. Puedes introducir el módulo manualmente o importar una tabla confirmada por el centro.</p>'}`:'<p class="small">Busca módulos que otro docente haya contrastado en este equipo. No son un catálogo oficial nacional completo.</p>'}
+ ${preview?`<div class="guide-review-line"><p><strong>Vista previa: ${preview.count} módulos de ${preview.titles} títulos</strong>. ${E(preview.notice)}</p>
+ <div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Código título / ciclo</th><th>Código módulo / nombre</th><th>Grado y familia</th></tr></thead><tbody>
+ ${preview.rows.slice(0,20).map(x=>`<tr><td>${E(x.title_code)} · ${E(x.cycle)}</td><td>${E(x.module_code)} · ${E(x.module)}</td><td>${E(x.grade)} · ${E(x.family)}</td></tr>`).join('')}
+ </tbody></table></div><p class="small">${preview.count>20?'Se muestran las primeras 20 filas; se comprobarán todas al importar.':''} Comprueba que la tabla pertenece a la comunidad y curso que has seleccionado.</p>
+ <button class="btn" type="button" data-action="catalog-import">Guardar filas confirmadas en el catálogo local</button></div>`:''}`;
+}
+function updateCatalogResults(){const el=$('#catalog-results');if(el)el.innerHTML=catalogResultsMarkup();}
+function catalogPanel(){return `<section class="panel" id="catalog-fp-panel"><h2>Catálogo de títulos y módulos · Biblioteca del centro</h2>
+ <p>Busca módulos ya registrados para <strong>la comunidad y el curso seleccionados arriba</strong>, o importa la tabla de una disposición revisada. No se copiarán RA, CE ni horas a otra administración.</p>
+ <div class="formgrid"><div class="field"><label for="catalog-query">Buscar por código, ciclo, familia o módulo</label><input id="catalog-query" maxlength="100" placeholder="Ej.: 0650, Gestión Administrativa, Sanidad"></div>
+ <div class="actions"><button type="button" class="btn secondary" data-action="catalog-search">Buscar en el catálogo local</button></div></div>
+ <details class="guide-calendar-details"><summary>Importar tabla de títulos y módulos (CSV o copiada de Excel)</summary>
+ <p class="small">Introduce seis columnas: <b>Código título;Ciclo;Grado;Familia;Código módulo;Módulo</b>. Ejemplo de estructura, con códigos ficticios:</p>
+ <pre class="small">Código título;Ciclo;Grado;Familia;Código módulo;Módulo
+DEMO001;Ciclo de ejemplo;Superior;Administración y Gestión;9999;Módulo de ejemplo</pre>
+ <textarea id="catalog-table" maxlength="120000" rows="5" placeholder="Pega aquí los datos obtenidos de la disposición oficial o de la tabla revisada.">${E(S.catalogTableText||'')}</textarea>
+ <div class="formgrid"><div class="field"><label>URL HTTPS de la disposición o catálogo oficial consultado</label><input id="catalog-source-url" type="url" maxlength="800" placeholder="https://www.boe.es/..."></div>
+ <div class="field"><label>Título, fecha y versión de la fuente</label><input id="catalog-source-title" maxlength="700" placeholder="Norma curricular, anexo y modificaciones comprobadas"></div></div>
+ <label class="guide-confirm"><input id="catalog-confirmed" type="checkbox"> Confirmo que he contrastado código, título, módulos, territorio, curso y fuente, y que deseo conservar estas fichas en el centro.</label>
+ <div class="actions"><button type="button" class="btn secondary" data-action="catalog-preview">Comprobar tabla antes de guardar</button></div>
+ <p class="small">Para evitar sustituciones accidentales, las discrepancias con fichas existentes se rechazan. Las horas, RA/CE y notas no se modifican.</p></details>
+ <div id="catalog-results">${catalogResultsMarkup()}</div>
+ <p class="small">Fuentes oficiales de referencia: <a href="https://todofp.es/catalogos-registros-sistema-fp.html" rel="noopener noreferrer" target="_blank">Catálogo Nacional de Ofertas y Catálogo Modular</a> · <a href="https://www.todofp.es/que-estudiar/material-descargable.html" rel="noopener noreferrer" target="_blank">Títulos y catálogos descargables de TodoFP</a>.</p></section>`;}
 function nationalSourcesPanel(){
  const record=S.nationalSources;
  if(!record)return `<p class="small">Las fuentes oficiales se consultarán cuando abra esta sección.</p>`;
@@ -665,7 +700,8 @@ async function viewPrepare(){
  <div class="field"><label>Ciclo formativo</label><input name="cycle" required placeholder="CFGM Gestión Administrativa"></div>
  <div class="field"><label>Nombre del módulo</label><input name="name" required placeholder="Técnica Contable"></div>
  <div class="field"><label>Grupo (opcional)</label><input name="group_name" placeholder="1.º A"></div>
- <button class="btn" type="submit">Crear módulo y continuar</button></form></section>`;return;}
+ <input type="hidden" name="catalog_entry_id"><p class="small" data-catalog-selection></p>
+ <button class="btn" type="submit">Crear módulo y continuar</button></form></section>${catalogPanel()}`;return;}
  const info=await API('/api/programming-builder/'+Number(S.moduleId));S.prepareInfo=info;
  if(info.draft?.official_module_code){S.curriculumHistory=await API('/api/curriculum/history?module_id='+Number(S.moduleId));}
  else {S.curriculumHistory={versions:[],count:0};S.curriculumHistoryDiff=null;}
@@ -836,7 +872,9 @@ async function viewPrograms(){
  <div class="field"><label>Ciclo formativo</label><input required name="cycle" placeholder="CFGM Gestión Administrativa"></div>
  <div class="field"><label>Módulo profesional</label><input required name="name" placeholder="Técnica Contable"></div>
  <div class="field"><label>Grupo</label><input name="group_name" placeholder="1.º A"></div>
+ <input type="hidden" name="catalog_entry_id"><p class="small" data-catalog-selection></p>
  <button class="btn" type="submit">Crear módulo</button></form></div>
+ ${catalogPanel()}
  ${S.modules.length?`<div class="panel"><div class="formrow"><div class="field grow"><label>Trabajar con el módulo</label><select id="module-select">${opt(S.modules,S.moduleId,m=>m.name+' · '+m.academic_year)}</select></div></div></div>`:empty('Cree el primer módulo para comenzar.')}
  ${d?renderModule(d):''}`;
 }
@@ -1363,6 +1401,19 @@ document.addEventListener('change',async event=>{
 
  try {
  const el=event.target;
+ if(el.closest('#prepare-create,#create-module') &&
+    ['cycle','name','territory','academic_year'].includes(el.name)){
+   const form=el.form;
+   if(form?.elements.catalog_entry_id?.value){
+      form.elements.catalog_entry_id.value='';S.catalogPicked=null;
+      const note=form.querySelector('[data-catalog-selection]');
+      if(note)note.textContent='Selección del catálogo anulada al modificar el módulo o el ámbito.';
+   }
+   if(el.name==='territory'||el.name==='academic_year'){
+      S.catalogResults=null;S.catalogPreview=null;S.catalogPreviewScope=null;updateCatalogResults();
+   }
+   return;
+ }
  if(el.id==='guide-region'){
    S.nationalSources=null;S.boeCandidates=null;S.boeInspection=null;
    const newRegion=el.value;const oldRegion=S.wizardDraft?.region;
@@ -1468,6 +1519,58 @@ document.addEventListener('click',async event=>{
    if(result){collectWizardFields();S.nationalTableText=result.table;S.nationalTablePreview=result;
      toast('Se han reconocido '+result.count+' módulos; revisa las filas y la disposición antes de guardarlas.');
      await page('preparar');}return;
+ }
+ if(action==='catalog-search'){
+   const scope=catalogScopeFromForm();
+   const query=$('#catalog-query')?.value.trim()||'';
+   const result=await busy(()=>API('/api/national/catalog?region='+encodeURIComponent(scope.region)+
+      '&academic_year='+encodeURIComponent(scope.academic_year)+'&q='+encodeURIComponent(query)));
+   if(result){S.catalogResults=result;S.catalogPreview=null;updateCatalogResults();}return;
+ }
+ if(action==='catalog-choose'){
+   const entry=(S.catalogResults?.entries||[]).find(x=>Number(x.id)===Number(el.dataset.catalogId));
+   if(!entry)return;
+   const scope=catalogScopeFromForm();
+   if(scope.region!==S.catalogResults.territory||scope.academic_year!==S.catalogResults.academic_year){
+      toast('Has cambiado comunidad o curso. Repite la búsqueda antes de seleccionar.',true);return;
+   }
+   const form=catalogCreationForm();
+   form.elements.cycle.value=entry.title_name;
+   form.elements.name.value=entry.module_name;
+   form.elements.catalog_entry_id.value=entry.id;
+   S.catalogPicked=entry;
+   const note=form.querySelector('[data-catalog-selection]');
+   if(note)note.textContent='Se utilizará la ficha '+entry.title_code+'/'+entry.module_code+
+      '. Los RA/CE y las horas continuarán pendientes de confirmación.';
+   toast('Módulo seleccionado del catálogo local; comprueba el grupo antes de crearlo.');return;
+ }
+ if(action==='catalog-preview'){
+   const scope=catalogScopeFromForm();
+   const table=$('#catalog-table')?.value||'';
+   const result=await busy(()=>API('/api/national/catalog/preview','POST',{table,...scope}));
+   if(result){S.catalogTableText=table;S.catalogPreview=result;S.catalogPreviewScope=scope;updateCatalogResults();}return;
+ }
+ if(action==='catalog-import'){
+   const scope=catalogScopeFromForm();
+   if(!S.catalogPreview||!S.catalogTableText)return;
+   if(S.catalogTableText!==($('#catalog-table')?.value||'') ||
+      scope.region!==S.catalogPreviewScope?.region || scope.academic_year!==S.catalogPreviewScope?.academic_year){
+     toast('La tabla, comunidad o curso han cambiado desde la vista previa. Vuelve a comprobar las filas.',true);return;
+   }
+   if(!$('#catalog-confirmed')?.checked){toast('Confirma la procedencia, comunidad y curso de todas las fichas.',true);return;}
+   const source_url=$('#catalog-source-url')?.value.trim()||'';
+   const source_title=$('#catalog-source-title')?.value.trim()||'';
+   if(!source_url||!source_title){toast('Indica el enlace HTTPS y título completo de la disposición.',true);return;}
+   if(!confirm('¿Guardar '+S.catalogPreview.count+' fichas para '+scope.region+' · '+scope.academic_year+'? No se sustituirán otras fichas existentes.'))return;
+   const result=await busy(()=>API('/api/national/catalog/import','POST',{
+     ...scope,table:S.catalogTableText,source_url,source_title,teacher_confirmed:true,replace_existing:false
+   }),'Fichas del catálogo guardadas con su fuente.');
+   if(result){toast(result.added+' nuevas, '+result.unchanged+' ya existentes.');
+     S.catalogPreview=null;S.catalogTableText='';
+     S.catalogResults=await API('/api/national/catalog?region='+encodeURIComponent(scope.region)+
+        '&academic_year='+encodeURIComponent(scope.academic_year));
+     const field=$('#catalog-table');if(field)field.value='';updateCatalogResults();
+   }return;
  }
  if(action==='national-table-preview'){
    const text=$('#national-hour-table')?.value.trim()||'';

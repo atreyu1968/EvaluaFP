@@ -39,7 +39,7 @@ import schedule_engine
 import program_importer
 import program_assistant
 
-APP_VERSION = "1.2.2-beta"
+APP_VERSION = "1.2.3-beta"
 TOKEN = secrets.token_urlsafe(32)
 WEB = (Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'web')
 
@@ -398,7 +398,7 @@ def register_students(db, module_id, incoming):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='EvaluaFP/1.2.2-beta'
+    server_version='EvaluaFP/1.2.3-beta'
     def log_message(self,format,*args):
         # No vuelca tokens, claves ni datos de alumnado en stdout.
         return
@@ -494,6 +494,12 @@ class Handler(BaseHTTPRequestHandler):
                     year=(args.get('academic_year') or [''])[0]
                     query=(args.get('q') or [''])[0]
                     return self.send(curriculum_history.catalog(d,region,year,query))
+                if path=='/api/national/catalog':
+                    import fp_catalog
+                    region=(args.get('region') or [''])[0]
+                    year=(args.get('academic_year') or [''])[0]
+                    search_term=(args.get('q') or [''])[0]
+                    return self.send(fp_catalog.search(d,region,year,search_term))
                 if path=='/api/national/sources':
                     import national_registry
                     mid=int((args.get('module_id') or ['0'])[0])
@@ -683,17 +689,49 @@ class Handler(BaseHTTPRequestHandler):
             with data.connect() as d:
                 result=evaluacion.sync_exam(d,int(body['instrument_id']),bool(body.get('replace',False)))
             return self.send({'ok':True,**result})
+        if path=='/api/national/catalog/preview':
+            import fp_catalog
+            # El ámbito de la tabla procede del formulario: solo se guarda tras confirmación.
+            territories.require_territory(body.get('region',''))
+            territories.year_code(body.get('academic_year',''))
+            return self.send(fp_catalog.preview_table(body.get('table')))
+        if path=='/api/national/catalog/import':
+            import fp_catalog
+            with data.connect() as d:
+                result=fp_catalog.import_table(d,body.get('table'),
+                    body.get('region',''),body.get('academic_year',''),
+                    body.get('source_url',''),body.get('source_title',''),
+                    teacher_confirmed=body.get('teacher_confirmed') is True,
+                    replace_existing=body.get('replace_existing') is True)
+            return self.send(result)
         if path=='/api/modules':
             year=str(body.get('academic_year','')).strip();cycle=str(body.get('cycle','')).strip();name=str(body.get('name','')).strip()
             region=territories.require_territory(body.get('territory') or 'Canarias')
             year=territories.year_code(year)
-            if not year or not cycle or not name or len(name)>150:raise ValueError('Curso, ciclo y módulo son obligatorios.')
+            if not year or not cycle or not name or len(cycle)>180 or len(name)>150:
+                raise ValueError('Curso, ciclo y módulo son obligatorios.')
             with data.connect() as d:
+                catalog_record=None
+                if body.get('catalog_entry_id') not in (None,''):
+                    import fp_catalog
+                    catalog_record=fp_catalog.get_entry(d,body['catalog_entry_id'],region,year)
+                    if cycle != catalog_record['title_name'] or name != catalog_record['module_name']:
+                        raise ValueError('El módulo seleccionado no coincide con la ficha curricular local. Repita la búsqueda.')
                 d.execute('INSERT INTO modules(academic_year,cycle,name,group_name,created_at,territory) VALUES(?,?,?,?,?,?)',
                           (year,cycle,name,str(body.get('group_name','')),data.now(),region))
                 mid=d.execute('SELECT last_insert_rowid()').fetchone()[0]
-                data.log(d,'module_created','module',mid,{'name':name})
-            return self.send({'id':mid})
+                if catalog_record:
+                    # Importa SOLO la identificación y procedencia de la ficha.
+                    # El currículo, los RA/CE y las horas siguen SIN confirmar.
+                    draft=program_builder.load(d,mid)['draft']
+                    draft.update({'official_cycle_code':catalog_record['title_code'],
+                                  'official_module_code':catalog_record['module_code'],
+                                  'curriculum_source_url':catalog_record['source_url'],
+                                  'curriculum_source_description':catalog_record['source_title'],
+                                  'curriculum_confirmed':False})
+                    program_builder.save(d,mid,draft)
+                data.log(d,'module_created','module',mid,{'name':name,'catalog_entry_id':catalog_record['id'] if catalog_record else None})
+            return self.send({'id':mid,'catalog_used':bool(catalog_record)})
         if path=='/api/curriculum/history/store':
             import curriculum_history
             mid=int(fields.get('module_id','0'))

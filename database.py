@@ -139,6 +139,9 @@ def init():
         # Migración aditiva: territorio del módulo (el resto de tablas no cambia).
         if 'territory' not in [c[1] for c in d.execute('PRAGMA table_info(modules)')]:
             d.execute("ALTER TABLE modules ADD COLUMN territory TEXT NOT NULL DEFAULT 'Canarias'")
+        # Catálogo incremental de títulos/módulos con procedencia y vigencia territorial.
+        import fp_catalog
+        fp_catalog.migrate(d)
         # Biblioteca local territorial/curso con procedencia docente explícita.
         import national_registry
         national_registry.migrate(d)

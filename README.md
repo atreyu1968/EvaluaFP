@@ -1,3 +1,11 @@
+# EvalúaFP 1.2.3 beta — Catálogo territorial de títulos y módulos
+
+**Actualización de 20/11/2026:** búsqueda e importación de fichas de títulos y módulos en los 19 ámbitos educativos españoles, con código, grado, familia, fuente normativa, curso académico y revisión docente; selección del módulo desde la ficha sin recrear sus datos. La importación **no confirma automáticamente RA/CE, horas, legislación ni calendarios**. Es un catálogo incremental local, no una réplica completa de los registros estatales. Consulte [Cambios 1.2.3](CAMBIOS_v123_BETA.md) y [la guía técnica](docs/CATALOGO_FP_NACIONAL_1.2.3.md).
+
+**Instalación:** haga una copia de seguridad de los datos. El ZIP incluye código fuente; no contiene ejecutables recompilados. Para Windows, siga `CREAR_VERSION_PENDRIVE.bat` después de extraer la carpeta completa en una ubicación nueva. Para actualizar desde 1.2.2, use el parche específico y valide las pruebas antes de utilizarlo con datos reales.
+
+---
+
 # EvalúaFP 1.2.2 beta — Historial curricular y comparación de RA/CE
 
 **Novedad:** archivo por módulo, comunidad y curso de disposiciones curriculares revisadas por el docente, con procedencia, SHA-256 y comparación de enunciados RA/CE entre versiones. Todo ello **sin sobrescribir calificaciones, ponderaciones ni los criterios que se estén utilizando**. Incluye un índice local incremental de módulos con fuentes archivadas; **no es un catálogo nacional completo ni un verificador automático de vigencia**.

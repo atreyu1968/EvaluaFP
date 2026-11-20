@@ -40,6 +40,8 @@ PORTALS = {
     'ML':'https://www.educacionfpydeportes.gob.es/',
 }
 MINISTRY_INDEX = 'https://www.todofp.es/sobre-fp/webs-fp-ccaa.html'
+NATIONAL_CATALOG = 'https://todofp.es/catalogos-registros-sistema-fp.html'
+NATIONAL_TITLES = 'https://www.todofp.es/que-estudiar/material-descargable.html'
 CYCLE_DIRECTORY = {
     'gestion administrativa': 'https://www.todofp.es/que-estudiar/familias-profesionales/administracion-gestion/gestion-administrativa/curriculos-ccaa.html',
     'administracion y finanzas': 'https://www.todofp.es/que-estudiar/familias-profesionales/administracion-gestion/administracion-finanzas/curriculos-ccaa.html',
@@ -55,6 +57,8 @@ def source_directory(territory, cycle, year):
     links = [
         {'label':f'Portal oficial de FP — {label}', 'url':PORTALS[code], 'kind':'portal'},
         {'label':'Directorio del Ministerio de las webs autonómicas de FP', 'url':MINISTRY_INDEX, 'kind':'directorio'},
+        {'label':'Catálogo Nacional de Ofertas y Catálogo Modular de FP (TodoFP)', 'url':NATIONAL_CATALOG, 'kind':'catalogos'},
+        {'label':'Catálogos descargables de títulos y ciclos (TodoFP)', 'url':NATIONAL_TITLES, 'kind':'titulos'},
         {'label':'BOE — datos abiertos y legislación consolidada', 'url':BOE_API, 'kind':'legislacion'},
     ]
     for key, url in CYCLE_DIRECTORY.items():
