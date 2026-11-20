@@ -46,8 +46,8 @@ def _context(db, module_id):
     module, draft, code = scope(db, int(module_id))
     year = territory.year_code(module['academic_year'])
     region = territory.require_territory(draft['region'])
-    if territory.territory_code(region) != code:
-        raise ValueError('El territorio del módulo y del borrador no coinciden.')
+    if territory.territory_code(region) != code or territory.require_territory(module['territory']) != region:
+        raise ValueError('El territorio del módulo y del borrador no coinciden. Guarde primero el ámbito adecuado.')
     return module, draft, code, year
 
 
