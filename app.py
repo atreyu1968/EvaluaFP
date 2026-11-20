@@ -474,6 +474,10 @@ class Handler(BaseHTTPRequestHandler):
                         stats[table]=d.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]
                     return self.send(stats)
                 if path=='/api/modules':return self.send(data.dicts(d.execute('SELECT * FROM modules ORDER BY id DESC')))
+                if path=='/api/national/boe-monitor':
+                    import normative_monitor
+                    mid=int((args.get('module_id') or ['0'])[0])
+                    return self.send(normative_monitor.list_sources(d,mid))
                 if path=='/api/curriculum/history':
                     import curriculum_history
                     mid=int((args.get('module_id') or ['0'])[0])
@@ -689,6 +693,18 @@ class Handler(BaseHTTPRequestHandler):
             with data.connect() as d:
                 result=evaluacion.sync_exam(d,int(body['instrument_id']),bool(body.get('replace',False)))
             return self.send({'ok':True,**result})
+        if path=='/api/national/boe-monitor/check':
+            import normative_monitor
+            with data.connect() as d:
+                result=normative_monitor.check_source(d,body.get('module_id'),body.get('boe_id'),
+                    body.get('teacher_confirmed') is True)
+            return self.send(result)
+        if path=='/api/national/boe-monitor/ack':
+            import normative_monitor
+            with data.connect() as d:
+                result=normative_monitor.acknowledge_change(d,body.get('module_id'),
+                    body.get('boe_id'),body.get('note'),body.get('teacher_confirmed') is True)
+            return self.send(result)
         if path=='/api/national/todofp/search-titles':
             import official_title_index
             return self.send(official_title_index.search(

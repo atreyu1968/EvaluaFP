@@ -3,7 +3,7 @@ const S = {page:'inicio', modules:[], moduleId:null, moduleDetails:null, exams:[
   examModuleId:null, examDetails:null, submissions:[], subId:null, subDetails:null,
   uploadExamId:null, uploadStudentId:null, queue:[], pageIndex:0, proposal:null, aiSettings:null, busy:false, manualDraft:null};
 S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.nationalDocumentPreview=null;
-S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.curriculumSourceFile=null;S.curriculumSourceKind='';
+S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.curriculumSourceFile=null;S.curriculumSourceKind='';
 S.todofpTitleSearch=null;S.todofpTitleGrade='Superior';S.todofpTitleQuery='';
 S.catalogResults=null;S.catalogPreview=null;S.catalogPreviewScope=null;S.catalogTableText='';S.catalogPicked=null;S.curriculumReview=null;S.feoeMinimumPreview=null;S.aiPreview=null;S.unitProposal=null;S.autoProposedModuleId=null;S.importPreview=null;S.preparePath=null;S.prepareStep=0;S.wizardDraft=null;S.prepareInfo=null;S.advanced=false;S.creatingModule=false;
 const E = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -354,6 +354,36 @@ function nationalSourcesPanel(){
  </section>`;
 }
 
+function normativeMonitorPanel(){
+ const record=S.normativeMonitor||{sources:[],events:[],notice:''};
+ let html='<div class="guide-calendar-details"><h4>Vigilancia de cambios publicados en el BOE</h4>';
+ html+='<p class="small">Consulta bajo demanda. Se compara la información de la API pública del BOE, no el texto completo de la norma ni los boletines autonómicos. Nunca se modifican automáticamente RA, CE ni notas.</p>';
+ if(!record.module_code){return html+'<p class="hint warning">'+E(record.notice||'Guarde primero el código oficial del módulo.')+'</p></div>';}
+ html+='<div class="formrow"><div class="field grow"><label>Identificador oficial del BOE asociado a este módulo</label><input id="monitor-boe-id" type="text" maxlength="24" placeholder="BOE-A-AAAA-NNN"></div>';
+ html+='<button type="button" class="btn secondary" data-action="boe-monitor-check">Consultar cambios</button></div>';
+ const sources=record.sources||[];
+ if(!sources.length){html+='<p class="small">Todavía no hay disposiciones vigiladas. Puedes consultar un ID oficial, o archivar una fuente curricular del BOE para que aparezca aquí.</p>';}
+ for(const source of sources){
+   const status=source.review_pending?'Cambio pendiente de revisión':source.last_checked?'Última consulta registrada':'Pendiente de primera consulta';
+   html+='<div class="guide-review-line"><strong>'+E(source.boe_id)+'</strong> · '+E(status);
+   html+='<p class="small">'+E(source.source_title||'Disposición BOE')+(source.last_checked?' · Consultada: '+E(source.last_checked):'')+'</p>';
+   html+='<div class="actions"><a class="btn mutedbtn smallbtn" href="https://www.boe.es/buscar/act.php?id='+E(source.boe_id)+'" target="_blank" rel="noopener noreferrer">Abrir BOE</a>';
+   html+='<button type="button" class="btn secondary smallbtn" data-action="boe-monitor-check" data-boe-id="'+E(source.boe_id)+'">Comprobar de nuevo</button>';
+   if(source.review_pending){html+='<button type="button" class="btn secondary smallbtn" data-action="boe-monitor-ack" data-boe-id="'+E(source.boe_id)+'">Registrar revisión docente</button>';}
+   html+='</div></div>';
+ }
+ if(record.events?.length){
+   html+='<details><summary>Historial de diferencias de metadatos ('+record.events.length+')</summary>';
+   for(const event of record.events){
+     const oldIds=(event.before?.reported_amendments||[]).map(x=>x.id).join(', ')||'Ninguna informada';
+     const newIds=(event.after?.reported_amendments||[]).map(x=>x.id).join(', ')||'Ninguna informada';
+     html+='<p class="small"><strong>'+E(event.boe_id)+'</strong> · '+E(event.observed_at)+'<br>Fecha de actualización: '+E(event.before?.last_update||'No indicada')+' → '+E(event.after?.last_update||'No indicada')+'<br>Referencias antes: '+E(oldIds)+'<br>Referencias después: '+E(newIds)+'</p>';
+   }
+   html+='</details>';
+ }
+ html+='<p class="small">'+E(record.notice||'La ausencia de cambios observados no demuestra vigencia normativa.')+'</p></div>';
+ return html;
+}
 function curriculumReviewPanel(){
  const info=S.prepareInfo||{},module=info.module||{},draft=S.wizardDraft||info.draft||{};
  const report=S.curriculumReview;
@@ -393,6 +423,7 @@ function curriculumReviewPanel(){
  ${diff.differences?.length?`<div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Código</th><th>Tipo de cambio</th><th>Texto anterior</th><th>Texto nuevo</th></tr></thead><tbody>${diff.differences.map(x=>`<tr><td>${E(x.code)}</td><td>${E(x.state)}</td><td>${E(x.old)}</td><td>${E(x.new)}</td></tr>`).join('')}</tbody></table></div>`:''}
  <p class="small">${E(diff.notice||'')}</p></div>`:''}
  </div>
+ ${normativeMonitorPanel()}
  </section>`;
 }
 
@@ -748,6 +779,7 @@ async function viewPrepare(){
  const info=await API('/api/programming-builder/'+Number(S.moduleId));S.prepareInfo=info;
  if(info.draft?.official_module_code){S.curriculumHistory=await API('/api/curriculum/history?module_id='+Number(S.moduleId));}
  else {S.curriculumHistory={versions:[],count:0};S.curriculumHistoryDiff=null;}
+ S.normativeMonitor=await API('/api/national/boe-monitor?module_id='+Number(S.moduleId));
  if(S.preparePath==='create'&&[1,4].includes(S.prepareStep)){
    S.nationalSources=await API('/api/national/sources?module_id='+Number(S.moduleId));
  }
@@ -1479,7 +1511,7 @@ document.addEventListener('change',async event=>{
      toast('Territorio cambiado: se han reiniciado las horas y los datos del calendario anterior.');
    }return;
  }
-  if(el.id==='prepare-module'){S.todofpTitleSearch=null;S.todofpResult=null;S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
+  if(el.id==='prepare-module'){S.todofpTitleSearch=null;S.todofpResult=null;S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
  if(el.id==='module-select'){S.moduleId=el.value;S.proposal=null;await page('programaciones');}
  if(el.id==='evaluation-module'){S.evaluationModuleId=Number(el.value);S.evalInstrumentId=null;await page('evaluacion');}
  if(el.id==='eval-instrument-select'){S.evalInstrumentId=Number(el.value);renderEvalScores();}
@@ -1507,6 +1539,24 @@ document.addEventListener('click',async event=>{
  if(event.target.id==='large-page'){event.target.classList.toggle('zoom');return;}
  const el=event.target.closest('[data-action]');if(!el)return;
  const action=el.dataset.action;const id=Number(el.dataset.id);const index=Number(el.dataset.index);
+ if(action==='boe-monitor-check'){
+   const boe_id=el.dataset.boeId||$('#monitor-boe-id')?.value.trim()||'';
+   if(!boe_id){toast('Introduzca un identificador del BOE.',true);return;}
+   if(!confirm('¿Ha comprobado que esta disposición corresponde al módulo y desea consultar sus metadatos oficiales? El resultado no acreditará vigencia jurídica.'))return;
+   const result=await busy(()=>API('/api/national/boe-monitor/check','POST',{module_id:Number(S.moduleId),boe_id,teacher_confirmed:true}));
+   if(result){
+      toast(result.status==='cambio_detectado'?'Se han observado diferencias: revisión docente necesaria.':result.status==='referencia_inicial'?'Referencia inicial registrada.':'Consulta completada: sin nuevas diferencias observadas.');
+      await page('preparar');
+   }return;
+ }
+ if(action==='boe-monitor-ack'){
+   const boe_id=el.dataset.boeId;
+   const note=prompt('Indique qué ha comprobado en la disposición y qué revisión curricular queda pendiente (mínimo 12 caracteres):','');
+   if(note===null)return;
+   if(!confirm('¿Registrar que ha examinado el aviso? No se valida automáticamente la norma ni se modifican los criterios.'))return;
+   const result=await busy(()=>API('/api/national/boe-monitor/ack','POST',{module_id:Number(S.moduleId),boe_id,note,teacher_confirmed:true}));
+   if(result){toast('Se ha registrado la revisión docente de la alerta.');await page('preparar');}return;
+ }
  if(action==='curriculum-history-save'){
    if(!S.curriculumSourceFile||!S.curriculumReview){toast('Vuelve a seleccionar y previsualizar el documento original.',true);return;}
    if(S.curriculumSourceKind!=='norma_oficial'){toast('El historial normativo solo admite disposiciones oficiales.',true);return;}
