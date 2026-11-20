@@ -2,7 +2,7 @@
 const S = {page:'inicio', modules:[], moduleId:null, moduleDetails:null, exams:[], examId:null,
   examModuleId:null, examDetails:null, submissions:[], subId:null, subDetails:null,
   uploadExamId:null, uploadStudentId:null, queue:[], pageIndex:0, proposal:null, aiSettings:null, busy:false, manualDraft:null};
-S.calendarVersions=null;S.calendarVersionDiff=null;S.calendarDocumentPreview=null;S.calendarDocumentModuleId=null;
+S.calendarVersions=null;S.calendarVersionDiff=null;S.calendarDocumentPreview=null;S.calendarDocumentModuleId=null;S.calendarAiPreview=null;S.calendarAiModuleId=null;S.calendarAiFragment='';
 S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.nationalDocumentPreview=null;
 S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.calendarVersions=null;S.calendarVersionDiff=null;S.curriculumSourceFile=null;S.curriculumSourceKind='';
 S.todofpTitleSearch=null;S.todofpTitleGrade='Superior';S.todofpTitleQuery='';
@@ -382,6 +382,45 @@ function calendarDocumentPanel(){
  <div class="actions"><button type="button" class="btn secondary" data-action="calendar-document-use">Cargar solo las fechas marcadas como borrador</button></div>`:''}
  <p class="small">${E(scope.notice)}</p></div>`:''}</details>`;
 }
+function calendarAiPanel(){
+ const draft=S.wizardDraft||S.prepareInfo?.draft||{};
+ const report=S.calendarAiPreview;
+ const matching=report&&report.region===draft.region&&
+   report.academic_year===S.prepareInfo?.module?.academic_year&&
+   Number(S.calendarAiModuleId)===Number(S.moduleId);
+ const scope=matching?report:null;
+ const sections=[
+  ['start_date','Inicio de clases'],['end_date','Fin de clases'],
+  ['vacation_periods','Periodos no lectivos y vacaciones'],
+  ['regional_non_teaching_days','Festivos o días no lectivos']
+ ];
+ const candidates=scope?.candidates||{};
+ const hasValues=sections.some(([field])=>(candidates[field]||[]).length);
+ const rows=sections.flatMap(([field,label])=>(candidates[field]||[]).map((candidate,index)=>{
+  const value=typeof candidate.value==='string'?candidate.value:
+    field==='vacation_periods'?`${candidate.value.start} a ${candidate.value.end}`:
+    candidate.value.date;
+  return `<label class="guide-review-line" style="display:block;margin:8px 0">
+   <input type="checkbox" data-calendar-ai-field="${E(field)}" data-calendar-ai-index="${index}">
+   <strong>${E(label)}: ${E(value)}</strong> · ${E(candidate.label)}
+   <small class="small" style="display:block">${E(candidate.location)} · ${E(candidate.excerpt)}</small></label>`;
+ })).join('');
+ return `<details class="guide-calendar-details" id="calendar-ai-panel" ${scope?'open':''}>
+ <summary>Interpretar un fragmento del calendario con IA (opcional)</summary>
+ <p class="small">Solo se enviará al proveedor configurado el fragmento que copie aquí. La IA debe aportar una cita literal para cada fecha y la aplicación rechazará propuestas sin respaldo textual. No se envía el PDF ni los datos del alumnado.</p>
+ <div class="field"><label for="calendar-ai-fragment">Fragmento de resolución o tabla oficial (máximo 12.000 caracteres)</label>
+ <textarea id="calendar-ai-fragment" rows="7" maxlength="12000" placeholder="Copie aquí la comunidad, el curso, la etapa FP, las cabeceras de la tabla y las filas pertinentes...">${E(S.calendarAiFragment||'')}</textarea></div>
+ <label class="guide-confirm"><input type="checkbox" id="calendar-ai-authorize"> Autorizo expresamente el envío de este fragmento al proveedor de IA configurado. He evitado incluir datos personales.</label>
+ <button type="button" class="btn secondary" data-action="calendar-ai-analyze">Interpretar fragmento con IA y verificar sus citas</button>
+ ${scope?`<div class="guide-review-line"><h4>Propuesta IA sin validar: ${E(scope.filename)} · ${Number(scope.candidate_count)} propuesta(s)</h4>
+ <p class="small">Archivo SHA-256: <code>${E(scope.sha256)}</code>. Modelo: ${E(scope.ai_model||'no indicado')}. Etapa FP: ${scope.scope?.fp_match?'mencionada':'no identificada'}; comunidad: ${scope.scope?.territory_match?'mencionada':'sin acreditación literal'}; curso: ${scope.scope?.academic_year_match?'mencionado':'sin acreditación literal'}.</p>
+ ${!scope.scope_ok?'<p class="hint warning">No se ha acreditado conjuntamente territorio, curso y etapa FP en el texto. Las fechas son solo orientativas y no se pueden cargar automáticamente.</p>':''}
+ ${(scope.warnings||[]).length?`<details><summary>Advertencias (${scope.warnings.length})</summary><div class="hint warning">${scope.warnings.map(x=>`<p>${E(x)}</p>`).join('')}</div></details>`:''}
+ ${rows||'<p class="small">No se ha obtenido ninguna fecha inequívoca.</p>'}
+ ${scope.scope_ok&&hasValues?`<label class="guide-confirm"><input id="calendar-ai-confirm" type="checkbox"> He cotejado el documento con la administración educativa, el curso y la etapa FP Grado D. Comprendo que la extracción no determina la vigencia ni confirma el calendario del centro.</label>
+ <div class="actions"><button type="button" class="btn secondary" data-action="calendar-ai-use">Cargar solo las fechas marcadas como borrador</button></div>`:''}
+ <p class="small">${E(scope.notice)}</p></div>`:''}</details>`;
+}
 function calendarVersionsPanel(){
  const data=S.calendarVersions, draft=S.wizardDraft||{},sch=draft.schedule||{};
  if(!data)return `<div class="guide-calendar-details"><p class="small">Las fuentes y las versiones se mostrarán al guardar la comunidad y el centro.</p></div>`;
@@ -547,6 +586,7 @@ function wizardStepMarkup(step, info){
  <p>Introduce fechas, vacaciones, festivos locales y del centro y la fuente oficial. EvalúaFP no aplicará fechas de otra comunidad ni de otro curso. <a href="https://www.todofp.es/" rel="noopener noreferrer" target="_blank">Consultar recursos de FP</a>.</p>`}</div>
   ${nationalSourcesPanel()}
  ${calendarDocumentPanel()}
+ ${calendarAiPanel()}
  <div class="guide-hours-source"><h3>Datos horarios procedentes de la ficha curricular</h3>
  ${info.hours_reference?`<p>Coincidencia por ciclo y denominación: <b>${E(info.hours_reference.title)} (${E(info.hours_reference.code)})</b>. ${info.hours_reference.course?'Curso del ciclo '+E(info.hours_reference.course)+'. ':''} ${info.hours_reference.source==='biblioteca_local'?'Ficha local revisada por docente':'Referencia de catálogo pendiente de comprobar'}. Horas propuestas: <b>${fmtSchoolNumber(info.hours_reference.total_hours)} h totales</b> · <b>${fmtSchoolNumber(info.hours_reference.weekly_hours)} h/semana</b>.</p><p><a href="${E(info.hours_reference.source_url)}" target="_blank" rel="noopener noreferrer">Abrir la fuente horaria indicada</a>${d.region==='Canarias'?' · Comprueba también las modificaciones posteriores del Gobierno de Canarias':''}</p>`:
  `<p class="hint warning">No se ha encontrado una coincidencia curricular inequívoca. No se inventarán horas: consulta el currículo estatal o autonómico y completa las dos cifras.</p>`}
@@ -941,7 +981,7 @@ function collectWizardFields(){
  }}
  // La carga horaria de una comunidad no se traslada a otra al cambiar el ámbito.
  if(previousRegion!==String(S.wizardDraft.region||'Canarias')){
-   S.calendarDocumentPreview=null;S.calendarDocumentModuleId=null;
+   S.calendarDocumentPreview=null;S.calendarDocumentModuleId=null;S.calendarAiPreview=null;S.calendarAiModuleId=null;S.calendarAiFragment='';
    const cfg=S.wizardDraft.schedule||{};
    Object.assign(cfg,{region:S.wizardDraft.region,island:'',municipality:'',
     calendar_confirmed:false,calendar_profile_id:'',calendar_source_url:'',
@@ -1583,7 +1623,7 @@ document.addEventListener('change',async event=>{
      toast('Territorio cambiado: se han reiniciado las horas y los datos del calendario anterior.');
    }return;
  }
-  if(el.id==='prepare-module'){S.todofpTitleSearch=null;S.todofpResult=null;S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.calendarVersions=null;S.calendarVersionDiff=null;S.calendarDocumentPreview=null;S.calendarDocumentModuleId=null;S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
+  if(el.id==='prepare-module'){S.todofpTitleSearch=null;S.todofpResult=null;S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.calendarVersions=null;S.calendarVersionDiff=null;S.calendarDocumentPreview=null;S.calendarDocumentModuleId=null;S.calendarAiPreview=null;S.calendarAiModuleId=null;S.calendarAiFragment='';S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
  if(el.id==='module-select'){S.moduleId=el.value;S.proposal=null;await page('programaciones');}
  if(el.id==='evaluation-module'){S.evaluationModuleId=Number(el.value);S.evalInstrumentId=null;await page('evaluacion');}
  if(el.id==='eval-instrument-select'){S.evalInstrumentId=Number(el.value);renderEvalScores();}
@@ -1729,6 +1769,56 @@ document.addEventListener('click',async event=>{
    await page('preparar');return;
  }
 
+ if(action==='calendar-ai-analyze'){
+   const fragment=$('#calendar-ai-fragment')?.value.trim()||'';
+   if(fragment.length<35||fragment.length>12000){
+     toast('Copia entre 35 y 12.000 caracteres con el territorio, curso y etapa FP.',true);return;
+   }
+   if(!$('#calendar-ai-authorize')?.checked){
+     toast('Debes autorizar expresamente el envío del fragmento a tu proveedor de IA.',true);return;
+   }
+   collectWizardFields();
+   const module=S.prepareInfo?.module;
+   if(!module)return;
+   if(!confirm('¿Autorizas enviar exclusivamente este fragmento a la IA configurada? No se enviarán archivos ni calificaciones.'))return;
+   const result=await busy(()=>API('/api/national/calendar-ai-interpret','POST',{
+      module_id:Number(S.moduleId),region:S.wizardDraft.region,
+      academic_year:module.academic_year,fragment,authorize_ai:true
+   }));
+   if(result){S.calendarAiFragment=fragment;S.calendarAiPreview=result;
+     S.calendarAiModuleId=Number(S.moduleId);
+     toast(result.candidate_count+' propuestas IA con fechas y citas comprobadas en el texto.');
+     await page('preparar');}
+   return;
+ }
+ if(action==='calendar-ai-use'){
+   const report=S.calendarAiPreview,m=S.prepareInfo?.module;
+   if(!report||!report.scope_ok||report.region!==S.wizardDraft?.region||
+      report.academic_year!==m?.academic_year||Number(S.calendarAiModuleId)!==Number(S.moduleId)){
+      toast('La vista previa corresponde a otro módulo, territorio o curso. Repite la extracción.',true);return;}
+   if(!$('#calendar-ai-confirm')?.checked){
+     toast('Coteja primero el documento y confirma el contexto escolar.',true);return;}
+   const selected={};
+   $all('[data-calendar-ai-field]:checked').forEach(input=>{
+     const name=input.dataset.calendarAiField,idx=Number(input.dataset.calendarAiIndex);
+     const candidate=report.candidates?.[name]?.[idx];
+     if(candidate)(selected[name]??=[]).push(JSON.parse(JSON.stringify(candidate.value)));
+   });
+   if(!Object.keys(selected).length){toast('Marca al menos una fecha o periodo.',true);return;}
+   if(!confirm('Se sustituirán solamente los campos seleccionados (por ejemplo, vacaciones o festivos). El calendario quedará SIN confirmar, sin modificar horas, FEOE, notas ni RA/CE. ¿Continuar?'))return;
+   collectWizardFields();
+   const next={...S.wizardDraft.schedule};
+   if(selected.start_date)next.start_date=selected.start_date[0];
+   if(selected.end_date)next.end_date=selected.end_date[0];
+   if(next.start_date&&next.end_date&&next.start_date>=next.end_date){
+     toast('El fin del curso no puede ser anterior al inicio.',true);return;}
+   if(selected.vacation_periods)next.vacation_periods=selected.vacation_periods;
+   if(selected.regional_non_teaching_days)next.regional_non_teaching_days=selected.regional_non_teaching_days;
+   next.calendar_confirmed=false;next.calendar_profile_id='';
+   S.wizardDraft.schedule=next;S.calendarAiPreview=null;S.calendarAiModuleId=null;
+   toast('Fechas cargadas en el borrador sin confirmar. Completa las fuentes y los festivos locales.');
+   await page('preparar');return;
+ }
  if(action==='national-document-preview'){
    const file=$('#national-table-file')?.files?.[0];
    if(!file){toast('Selecciona un PDF o DOCX con la tabla horaria.',true);return;}
