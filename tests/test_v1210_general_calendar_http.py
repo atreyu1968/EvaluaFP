@@ -91,6 +91,10 @@ class GeneralCalendarHTTPTests(unittest.TestCase):
         with database.connect() as db:
             rows=[dict(x) for x in db.execute(
                 'SELECT id,territory_code,academic_year,stage FROM national_general_fp_calendars').fetchall()]
+            actual=[(x['id'],x['territory_code'],x['academic_year'],x['stage']) for x in rows]
+            expected=[(first,'MD','2026-2027','fp_grado_d'),
+                      (second,'MD','2026-2027','fp_grado_d')]
+            self.assertEqual(actual,expected)
             direct=general_calendar_library.compare(db,mid,first,second)
             self.assertEqual(len(direct['changes']),1,rows)
         status,diff=self.request(
