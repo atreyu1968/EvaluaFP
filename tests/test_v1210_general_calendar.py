@@ -154,6 +154,7 @@ class GeneralCalendarLibraryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'confirmado'):self.save()
         self.calendar(1,first='2027-09-14')
         with self.assertRaises(ValueError):self.save()
+        self.db.execute('DELETE FROM programming_drafts WHERE module_id=1')
         self.calendar(1)
         draft=program_builder.load(self.db,1)['draft']
         draft['schedule']['calendar_source_url']='https://localhost/private'
