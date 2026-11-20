@@ -252,7 +252,7 @@ def _fragment_for_optional_ai(records, region, academic_year):
     for index,row in enumerate(records):
         raw=' '.join(row.get('excerpt',row['text']).split())[:450]
         folded=territories.fold(raw)
-        scoped=(any(re.search(r'(?<!\\w)'+re.escape(term)+r'(?!\\w)',folded) for term in terms)
+        scoped=(any(re.search(r'(?<!\w)'+re.escape(term)+r'(?!\w)',folded) for term in terms)
                 or academic_year in folded or bool(FP_RE.search(folded)))
         date_related=bool(DATE_RE.search(folded)) or (
             bool(START_RE.search(folded) or END_RE.search(folded) or VACATION_RE.search(folded))
@@ -260,10 +260,10 @@ def _fragment_for_optional_ai(records, region, academic_year):
         if not ((scoped and index<100) or date_related):continue
         if raw in seen:continue
         seen.add(raw)
-        if len('\\n'.join(selected))+len(raw)>10500:break
+        if len('\n'.join(selected))+len(raw)>10500:break
         selected.append(raw)
         if len(selected)>=95:break
-    return '\\n'.join(selected)
+    return '\n'.join(selected)
 
 
 def preview_document(filename, blob, region, academic_year, allow_ocr=False):
