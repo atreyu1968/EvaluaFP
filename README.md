@@ -1,3 +1,11 @@
+# EvalúaFP 1.2.7 beta — Calendarios escolares versionados
+
+**Novedad:** consulta de fuentes oficiales para los 19 ámbitos educativos, conservación de versiones de calendarios de centro por comunidad/curso/municipio/isla, registro de correcciones y comparación de fechas. Las versiones se recuperan como **borradores sin confirmar**, sin modificar horarios, RA/CE ni calificaciones. [Cambios 1.2.7](CAMBIOS_v127_BETA.md) · [Guía técnica](docs/CALENDARIOS_ESCOLARES_v127.md).
+
+**Alcance:** disponer de enlaces de consulta para 19 ámbitos **no equivale a haber precargado sus 19 calendarios escolares oficiales**. Las fechas verificadas incorporadas al catálogo siguen siendo parciales y la confirmación compete al docente. Entrega de **código fuente beta**, sin nuevos ejecutables recompilados.
+
+---
+
 # EvalúaFP 1.2.6 beta — Vigilancia de modificaciones del BOE
 
 **Nueva fase:** cada módulo puede consultar bajo demanda los metadatos de una disposición oficial del BOE, conservar la primera referencia, detectar diferencias posteriores y mantener alertas hasta que el docente registre una revisión. No se modifica el currículo ni se presume vigencia jurídica. La verificación de boletines autonómicos sigue pendiente. [Cambios de esta beta](CAMBIOS_v126_BETA.md) · [Nota técnica](docs/MONITOR_CAMBIOS_BOE_1.2.6.md).

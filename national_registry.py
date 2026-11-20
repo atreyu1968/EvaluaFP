@@ -96,6 +96,8 @@ def migrate(db):
         checked_at TEXT NOT NULL,
         teacher_confirmed INTEGER NOT NULL DEFAULT 1,
         PRIMARY KEY(territory_code,academic_year,center_key))''')
+    import calendar_versions
+    calendar_versions.migrate(db)
 
 
 def valid_url(raw):
@@ -194,13 +196,30 @@ def find_calendar(db,module_id):
     module,draft,code=scope(db,module_id)
     center=str(draft.get('center') or '').strip()
     if not center:return None
+    # Preferir la versión del centro y MUNICIPIO/ISLA exactos. Una tabla
+    # heredada solo por nombre de centro no debe mezclar localidades.
+    import calendar_versions
+    history=calendar_versions.list_versions(db,module_id)
+    if history['versions']:
+        latest=history['versions'][0]
+        return {'territory_code':code,'academic_year':module['academic_year'],
+            'center':center, 'schedule':{**latest['schedule'],'calendar_confirmed':False},
+            'source_url':latest['source_url'],'source_title':latest['source_title'],
+            'checked_at':latest['reviewed_at'],'status':'revisado_por_docente_en_historial_local',
+            'notice':'Calendario archivado para este centro, municipio, isla y curso. Revise las disposiciones recientes antes de volver a confirmarlo.'}
     row=db.execute('''SELECT * FROM national_center_calendars WHERE territory_code=?
       AND academic_year=? AND center_key=?''',
         (code,module['academic_year'],territories.fold(center))).fetchone()
     if not row:return None
     result=dict(row)
+    stored=json.loads(result['configuration_json'])
+    current=draft['schedule']
+    if territories.fold(stored.get('municipality','')) != territories.fold(current.get('municipality','')):
+        return None
+    if territories.fold(stored.get('island','')) != territories.fold(current.get('island','')):
+        return None
     return {'territory_code':code,'academic_year':module['academic_year'],'center':center,
-            'schedule':json.loads(result['configuration_json']),
+            'schedule':stored,
             'source_url':result['source_url'],'source_title':result['source_title'],
             'checked_at':result['checked_at'],'status':'confirmado_por_docente_en_biblioteca_local',
             'notice':'Calendario conservado para el mismo centro y curso. Revise actualizaciones y festivos locales antes de aplicarlo a otro grupo.'}
@@ -223,7 +242,7 @@ def save_calendar(db,module_id,payload):
     fields=['region','island','municipality','start_date','end_date','evaluation_ends',
             'vacation_periods','regional_non_teaching_days','extra_non_teaching_days',
             'calendar_profile_id','calendar_academic_year','calendar_source_url',
-            'calendar_source_description','calendar_confirmed']
+            'calendar_source_description','calendar_correction_urls','calendar_confirmed']
     calendar={key:cfg[key] for key in fields}
     db.execute('''INSERT INTO national_center_calendars
         (territory_code,academic_year,center_key,center_name,configuration_json,source_url,source_title,checked_at)
@@ -233,9 +252,11 @@ def save_calendar(db,module_id,payload):
         source_url=excluded.source_url,source_title=excluded.source_title,checked_at=excluded.checked_at''',
         (code,module['academic_year'],territories.fold(center),center,
          json.dumps(calendar,ensure_ascii=False),source,title,database.now()))
+    import calendar_versions
+    version=calendar_versions.record_from_draft(db,module_id,cfg)
     database.log(db,'local_center_calendar_confirmed','module',module_id,
                  {'territory':code,'academic_year':module['academic_year'],'center':center})
-    return find_calendar(db,module_id)
+    return {**find_calendar(db,module_id),'revision':version}
 
 
 def propose_module_sources(db,module_id):
