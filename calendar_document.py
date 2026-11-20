@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 
 import territorial_profiles as territories
+import calendar_annex
 
 MAX_FILE = 15 * 1024 * 1024
 MAX_PAGES = 80
@@ -80,10 +81,12 @@ def _records_from_docx(blob):
             if paragraph.text.strip():
                 records.append({'text': paragraph.text, 'location': f'párrafo {i}'})
         for j, table in enumerate(doc.tables, 1):
-            for i, row in enumerate(table.rows, 1):
-                value=' | '.join(c.text.strip().replace('\n',' ') for c in row.cells)
+            matrix=[[cell.text for cell in row.cells] for row in table.rows]
+            for i, cells in enumerate(matrix, 1):
+                value=' | '.join(c.strip().replace('\n',' ') for c in cells)
                 if value.strip(' |'):
                     records.append({'text': value, 'location': f'tabla {j}, fila {i}'})
+            records.extend(calendar_annex.table_records(matrix,f'tabla {j}'))
         return records, False, 0, []
     except Exception as exc:
         raise ValueError('No se puede leer el documento Word; compruebe el archivo.') from exc
@@ -114,9 +117,17 @@ def _records_from_pdf(blob, allow_ocr):
                     scanned+=1;used=True
                 else:
                     warnings.append(f'Página {n}: sin texto seleccionable; no se ha aplicado OCR.')
-            for line in value.splitlines():
-                if line.strip():
-                    records.append({'text':line, 'location':f'página {n}'})
+            page_records=[{'text':line,'location':f'página {n}'}
+                          for line in value.splitlines() if line.strip()]
+            records.extend(calendar_annex.stitched_records(
+                page_records,DATE_RE,RANGE_RE,START_RE,END_RE,SCHOOL_RE,VACATION_RE))
+            if hasattr(page,'find_tables'):
+                try:
+                    for j,table in enumerate(page.find_tables().tables,1):
+                        records.extend(calendar_annex.table_records(table.extract(),
+                                     f'página {n}, tabla {j}'))
+                except Exception:
+                    warnings.append(f'Página {n}: no se pudieron inspeccionar las tablas; revise el texto y las celdas.')
     return records,used,scanned,warnings
 
 
@@ -149,9 +160,10 @@ def _candidates(records, academic_year):
     # Se limita la extracción a líneas/filas que ofrezcan una relación explícita
     # con el concepto. No se rellena nunca un año ausente en el texto.
     for row in records[:MAX_RECORDS]:
-        original=' '.join(row['text'].split())[:450]
-        if not original:continue
-        folded=territories.fold(original)
+        text=' '.join(row['text'].split())[:450]
+        original=' '.join(row.get('excerpt',row['text']).split())[:450]
+        if not text:continue
+        folded=territories.fold(text)
         current_page=row['location'] if row['location'].startswith('página ') else None
         if current_page and previous_page and current_page!=previous_page:
             active_stage=None
