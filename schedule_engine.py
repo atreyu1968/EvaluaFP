@@ -52,6 +52,7 @@ def defaults(academic_year='2026-2027', region='Canarias', island=''):
         'calendar_academic_year': academic_year,
         'calendar_source_url': profile['source_urls'][0] if profile else '',
         'calendar_source_description': profile['source_description'] if profile else '',
+        'calendar_correction_urls': list(profile['source_urls'][1:2]) if profile else [],
         'feoe_start': '', 'feoe_end': '', 'feoe_center_hours_weekly': None,
         'feoe_criteria_codes': [], 'feoe_target_percent': 15,
         'calendar_confirmed': False, 'hours_confirmed': False,
@@ -69,7 +70,7 @@ def fresh_calendar(academic_year, region, island=''):
         'region','island','municipality','start_date','end_date','evaluation_ends',
         'vacation_periods','regional_non_teaching_days','extra_non_teaching_days',
         'calendar_profile_id','calendar_academic_year','calendar_source_url',
-        'calendar_source_description','calendar_confirmed')}
+        'calendar_source_description','calendar_correction_urls','calendar_confirmed')}
 
 
 def clean(raw, academic_year='2026-2027'):
@@ -186,6 +187,21 @@ def clean(raw, academic_year='2026-2027'):
     url=base.get('calendar_source_url','')
     if url and (urlsplit(url).scheme not in ('https','http') or not urlsplit(url).netloc):
         raise ValueError('La URL del calendario debe usar https:// o http:// y tener dominio válido.')
+    corrections = base.get('calendar_correction_urls', [])
+    if not isinstance(corrections, list) or len(corrections)>8:
+        raise ValueError('Se admiten hasta ocho enlaces de correcciones del calendario.')
+    clean_corrections=[]
+    for link in corrections:
+        if not isinstance(link,str) or len(link)>800 or not link.strip():
+            raise ValueError('La URL de corrección del calendario es inválida.')
+        link=link.strip()
+        parts=urlsplit(link)
+        if parts.scheme!='https' or not parts.hostname or parts.username or parts.password or any(ord(c)<32 for c in link) or chr(92) in link:
+            raise ValueError('Las correcciones deben identificarse mediante URLs HTTPS públicas.')
+        if parts.hostname.lower() in ('localhost','127.0.0.1','::1') or parts.hostname.lower().endswith('.local'):
+            raise ValueError('La fuente de una corrección no puede ser local.')
+        if link not in clean_corrections:clean_corrections.append(link)
+    base['calendar_correction_urls']=clean_corrections
     base['vacation_periods']=intervals(base['vacation_periods'])
     base['regional_non_teaching_days']=individual_days(base['regional_non_teaching_days'])
     # Los enlaces territoriales se enlazan únicamente a su perfil original.
