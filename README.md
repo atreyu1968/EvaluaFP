@@ -1,3 +1,11 @@
+# EvalúaFP 1.2.8 beta — Importar fechas desde resoluciones de calendario
+
+**Nueva fase:** lectura local de archivos PDF, DOCX, TXT y Markdown con una vista previa de fechas literales, su procedencia (página/párrafo/fila) y avisos de ambigüedad. El docente selecciona las fechas que desea llevar a un borrador **sin confirmar**, sin modificar datos de evaluación. Se verifica que el archivo mencione comunidad, curso y FP antes de habilitar la carga. [Novedades 1.2.8](CAMBIOS_v128_BETA.md) · [Guía técnica](docs/EXTRACCION_CALENDARIO_1.2.8.md).
+
+**Precauciones:** no certifica la vigencia normativa, no descarga todos los calendarios oficiales ni interpreta automáticamente anexos escaneados sin OCR. No hay nuevos ejecutables compilados; es código fuente beta. Las resoluciones conjuntas para varias etapas necesitan especial cotejo docente.
+
+---
+
 # EvalúaFP 1.2.7 beta — Calendarios escolares versionados
 
 **Novedad:** consulta de fuentes oficiales para los 19 ámbitos educativos, conservación de versiones de calendarios de centro por comunidad/curso/municipio/isla, registro de correcciones y comparación de fechas. Las versiones se recuperan como **borradores sin confirmar**, sin modificar horarios, RA/CE ni calificaciones. [Cambios 1.2.7](CAMBIOS_v127_BETA.md) · [Guía técnica](docs/CALENDARIOS_ESCOLARES_v127.md).
