@@ -241,6 +241,31 @@ def _candidates(records, academic_year):
     return grouped,warnings
 
 
+def _fragment_for_optional_ai(records, region, academic_year):
+    """Prepara únicamente texto local para revisión; jamás lo envía a la IA.
+
+    Conserva el contexto territorial/etapa/año y fragmentos de fechas/tablas,
+    sin usar cifras sueltas como si fueran confirmadas. El docente lo edita.
+    """
+    terms=TERRITORY_ALIASES[territories.territory_code(region)]
+    selected=[];seen=set()
+    for index,row in enumerate(records):
+        raw=' '.join(row.get('excerpt',row['text']).split())[:450]
+        folded=territories.fold(raw)
+        scoped=(any(re.search(r'(?<!\\w)'+re.escape(term)+r'(?!\\w)',folded) for term in terms)
+                or academic_year in folded or bool(FP_RE.search(folded)))
+        date_related=bool(DATE_RE.search(folded)) or (
+            bool(START_RE.search(folded) or END_RE.search(folded) or VACATION_RE.search(folded))
+            and bool(SCHOOL_RE.search(folded) or VACATION_RE.search(folded)))
+        if not ((scoped and index<100) or date_related):continue
+        if raw in seen:continue
+        seen.add(raw)
+        if len('\\n'.join(selected))+len(raw)>10500:break
+        selected.append(raw)
+        if len(selected)>=95:break
+    return '\\n'.join(selected)
+
+
 def preview_document(filename, blob, region, academic_year, allow_ocr=False):
     """Analiza un archivo local, sin guardar originales ni tocar calificaciones.
 
@@ -288,7 +313,9 @@ def preview_document(filename, blob, region, academic_year, allow_ocr=False):
             'scope':{'territory_match':territory_match,'academic_year_match':year_match,'fp_match':stage_match,
                      'courses_in_document':sorted(years)},
             'candidates':values,'candidate_count':count,'warnings':list(dict.fromkeys(warnings))[:40],
-            'ocr_used':ocr,'ocr_pages':ocr_pages,'requires_teacher_confirmation':True,
+            'ocr_used':ocr,'ocr_pages':ocr_pages,
+            'suggested_ai_fragment':_fragment_for_optional_ai(records,region,academic_year) if scope_ok else '',
+            'requires_teacher_confirmation':True,
             'no_changes_saved':True,'source_type':kind,
             'notice':('Vista previa textual, no comprobación de vigencia. Compruebe que las fechas corresponden a FP Grado D, '
                       'a su centro y a la última disposición/corrección. No se incorporarán horas, evaluaciones, FEOE ni notas.')}
