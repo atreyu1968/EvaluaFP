@@ -1,3 +1,11 @@
+# EvalúaFP 1.2.5 beta — Buscador nacional de títulos y módulos
+
+**Nueva fase:** el profesor puede buscar por denominación los títulos de Grado Básico, Medio, Superior y cursos de especialización en los índices públicos de TodoFP, sin conocer la URL de cada ficha. Al abrir el título se propone su lista informativa de módulos y los enlaces curriculares del territorio. **No se inventan códigos de título, horas, RA/CE ni calendarios**. Consulta [novedades 1.2.5](CAMBIOS_v125_BETA.md) y [guía técnica](docs/INDICE_TITULOS_OFICIALES_v125.md).
+
+**Límites:** la consulta en vivo de TodoFP no pudo probarse en el entorno de compilación. Esta entrega contiene **fuentes**, no nuevos EXE. El catálogo nacional codificado y los calendarios oficiales de todos los cursos siguen pendientes.
+
+---
+
 # EvalúaFP 1.2.4 beta — Explorar módulos y currículos de TodoFP por comunidad
 
 **Nueva ayuda nacional:** desde la creación de un módulo o la programación didáctica se puede consultar una ficha de ciclo de TodoFP, localizar módulos identificados y abrir los currículos/modificaciones enlazados para la administración educativa seleccionada. Los códigos que no constan, las horas y la vigencia **siguen pendientes de contrastar por el docente**. La consulta no altera automáticamente RA/CE, notas ni calendario.

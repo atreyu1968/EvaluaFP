@@ -4,6 +4,7 @@ const S = {page:'inicio', modules:[], moduleId:null, moduleDetails:null, exams:[
   uploadExamId:null, uploadStudentId:null, queue:[], pageIndex:0, proposal:null, aiSettings:null, busy:false, manualDraft:null};
 S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.nationalDocumentPreview=null;
 S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.curriculumSourceFile=null;S.curriculumSourceKind='';
+S.todofpTitleSearch=null;S.todofpTitleGrade='Superior';S.todofpTitleQuery='';
 S.catalogResults=null;S.catalogPreview=null;S.catalogPreviewScope=null;S.catalogTableText='';S.catalogPicked=null;S.curriculumReview=null;S.feoeMinimumPreview=null;S.aiPreview=null;S.unitProposal=null;S.autoProposedModuleId=null;S.importPreview=null;S.preparePath=null;S.prepareStep=0;S.wizardDraft=null;S.prepareInfo=null;S.advanced=false;S.creatingModule=false;
 const E = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const V = v=>v==null?'No indicada':String(v)+' %';
@@ -284,11 +285,28 @@ function catalogResultsMarkup(){
  <button class="btn" type="button" data-action="catalog-import">Guardar filas confirmadas en el catálogo local</button></div>`:''}`;
 }
 function updateCatalogResults(){const el=$('#catalog-results');if(el)el.innerHTML=catalogResultsMarkup();}
+function todofpTitlesPanel(place){
+ const data=S.todofpTitleSearch;
+ return `<div class="guide-calendar-details" id="todofp-title-index"><h4>Encontrar el ciclo en el índice estatal de TodoFP</h4>
+ <p class="small">Elige el grado y escribe parte del nombre: no es necesario conocer ni pegar la dirección web de la ficha. Los códigos de título y las horas deben comprobarse en la disposición autonómica.</p>
+ <div class="formgrid"><div class="field"><label for="todofp-title-grade">Tipo de oferta</label>
+ <select id="todofp-title-grade">${['Básico','Medio','Superior','Especialización'].map(v=>`<option ${v===S.todofpTitleGrade?'selected':''}>${E(v)}</option>`).join('')}</select></div>
+ <div class="field"><label for="todofp-title-query">Buscar por nombre del ciclo o especialización</label>
+ <input id="todofp-title-query" maxlength="120" value="${E(S.todofpTitleQuery||'')}" placeholder="Ej.: Administración y Finanzas"></div></div>
+ <div class="actions"><button type="button" class="btn secondary" data-action="todofp-search-titles">Buscar títulos en TodoFP</button></div>
+ ${data?`<p class="small"><strong>${data.count} coincidencias</strong> · ${E(data.grade)} · ${E(data.territory)} · ${E(data.academic_year)}. ${E(data.notice)}</p>
+ ${data.results?.length?`<div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Título localizado</th><th>Opciones</th></tr></thead><tbody>
+ ${data.results.map((v,i)=>`<tr><td><strong>${E(v.name)}</strong><br><span class="small">Código del título: pendiente de verificar</span></td><td>
+ <button type="button" class="btn mutedbtn smallbtn" data-action="todofp-open-title" data-title-index="${i}">Examinar módulos y fuentes</button>
+ <a href="${E(v.url)}" target="_blank" rel="noopener noreferrer">Abrir ficha</a></td></tr>`).join('')}</tbody></table></div>`:'<p class="hint">No se han encontrado títulos con ese texto en el índice consultado. Prueba otro nombre o utiliza el enlace manual de más abajo.</p>'}
+ ${data.truncated?'<p class="small">Se muestra un máximo de 65 resultados. Acota la búsqueda.</p>':''}`:''}</div>`;
+}
 function todofpExplorerPanel(place){
  const result=S.todofpResult;
  const allowed=result&&result.region&&(place==='catalog'||place==='builder');
  return `<section class="guide-calendar-summary" id="todofp-explorer"><h3>Consultar ficha estatal de un ciclo y sus currículos autonómicos (TodoFP)</h3>
- <p class="small">Pega el enlace HTTPS de la ficha del ciclo en el portal oficial TodoFP. La aplicación localizará los módulos indicados y, cuando existan, los enlaces a currículo y modificaciones de tu comunidad. <b>Esta ficha no acredita horas, códigos ausentes ni implantación territorial.</b></p>
+ ${todofpTitlesPanel(place)}
+ <p class="small">O pega el enlace HTTPS de la ficha del ciclo en el portal oficial TodoFP. La aplicación localizará los módulos indicados y, cuando existan, los enlaces a currículo y modificaciones de tu comunidad. <b>Esta ficha no acredita horas, códigos ausentes ni implantación territorial.</b></p>
  <div class="actions"><div class="field" style="flex:1;min-width:260px"><label>Enlace oficial del ciclo o de su página «Currículos CCAA»</label>
  <input id="todofp-url" type="url" maxlength="700" value="${E(S.todofpURL||'')}" placeholder="https://www.todofp.es/que-estudiar/familias-profesionales/...html"></div>
  <button class="btn secondary" type="button" data-action="todofp-explore">Consultar fuentes del territorio y curso</button></div>
@@ -1437,13 +1455,13 @@ document.addEventListener('change',async event=>{
    }
    if(el.name==='territory'||el.name==='academic_year'){
       S.catalogResults=null;S.catalogPreview=null;S.catalogPreviewScope=null;updateCatalogResults();
-      S.todofpResult=null; // No mostrar enlaces del territorio o curso anterior.
+      S.todofpResult=null;S.todofpTitleSearch=null; // No arrastrar títulos o fuentes de otro curso/territorio.
       const explorer=$('#todofp-explorer');if(explorer)explorer.outerHTML=todofpExplorerPanel('catalog');
    }
    return;
  }
  if(el.id==='guide-region'){
-   S.nationalSources=null;S.boeCandidates=null;S.boeInspection=null;S.todofpResult=null;
+   S.nationalSources=null;S.boeCandidates=null;S.boeInspection=null;S.todofpResult=null;S.todofpTitleSearch=null;
    const newRegion=el.value;const oldRegion=S.wizardDraft?.region;
    if(oldRegion!==newRegion){
      collectWizardFields();
@@ -1461,7 +1479,7 @@ document.addEventListener('change',async event=>{
      toast('Territorio cambiado: se han reiniciado las horas y los datos del calendario anterior.');
    }return;
  }
-  if(el.id==='prepare-module'){S.todofpResult=null;S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
+  if(el.id==='prepare-module'){S.todofpTitleSearch=null;S.todofpResult=null;S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
  if(el.id==='module-select'){S.moduleId=el.value;S.proposal=null;await page('programaciones');}
  if(el.id==='evaluation-module'){S.evaluationModuleId=Number(el.value);S.evalInstrumentId=null;await page('evaluacion');}
  if(el.id==='eval-instrument-select'){S.evalInstrumentId=Number(el.value);renderEvalScores();}
@@ -1547,6 +1565,34 @@ document.addEventListener('click',async event=>{
    if(result){collectWizardFields();S.nationalTableText=result.table;S.nationalTablePreview=result;
      toast('Se han reconocido '+result.count+' módulos; revisa las filas y la disposición antes de guardarlas.');
      await page('preparar');}return;
+ }
+ if(action==='todofp-search-titles'){
+   const grade=$('#todofp-title-grade')?.value||'Superior';
+   const query=$('#todofp-title-query')?.value.trim()||'';
+   const inWizard=S.preparePath==='create'&&Boolean(S.prepareInfo?.module)&&Boolean($('#prepare-wizard-form'));
+   if(inWizard)collectWizardFields();
+   const scope=inWizard?{region:S.wizardDraft.region,academic_year:S.prepareInfo.module.academic_year}:catalogScopeFromForm();
+   const data=await busy(()=>API('/api/national/todofp/search-titles','POST',{grade,query,...scope}),
+      'Índice de títulos consultado. Comprueba las fichas y la norma aplicable.');
+   if(data){S.todofpTitleGrade=grade;S.todofpTitleQuery=query;S.todofpTitleSearch=data;
+     S.todofpResult=null;const panel=$('#todofp-explorer');
+     if(panel)panel.outerHTML=todofpExplorerPanel(inWizard?'builder':'catalog');else await page('preparar');}
+   return;
+ }
+ if(action==='todofp-open-title'){
+   const data=S.todofpTitleSearch;
+   const inWizard=S.preparePath==='create'&&Boolean(S.prepareInfo?.module)&&Boolean($('#prepare-wizard-form'));
+   if(inWizard)collectWizardFields();
+   const scope=inWizard?{region:S.wizardDraft.region,academic_year:S.prepareInfo.module.academic_year}:catalogScopeFromForm();
+   if(!data||scope.region!==data.territory||scope.academic_year!==data.academic_year){
+      toast('El índice pertenece a otra comunidad o curso. Repita la búsqueda.',true);return;}
+   const record=data.results?.[Number(el.dataset.titleIndex)];if(!record)return;
+   const found=await busy(()=>API('/api/national/todofp/explore','POST',{url:record.url,...scope,
+       cycle_name:inWizard?S.prepareInfo.module.cycle:'',module_name:inWizard?S.prepareInfo.module.name:''}),
+       'Ficha consultada. Comprueba los módulos y los currículos autonómicos.');
+   if(found){S.todofpResult=found;S.todofpURL=record.url;
+     const panel=$('#todofp-explorer');if(panel)panel.outerHTML=todofpExplorerPanel(inWizard?'builder':'catalog');
+     else await page('preparar');}return;
  }
  if(action==='todofp-explore'){
    const src=$('#todofp-url')?.value.trim()||'';

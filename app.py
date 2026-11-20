@@ -39,7 +39,7 @@ import schedule_engine
 import program_importer
 import program_assistant
 
-APP_VERSION = "1.2.4-beta"
+APP_VERSION = "1.2.5-beta"
 TOKEN = secrets.token_urlsafe(32)
 WEB = (Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'web')
 
@@ -398,7 +398,7 @@ def register_students(db, module_id, incoming):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='EvaluaFP/1.2.4-beta'
+    server_version='EvaluaFP/1.2.5-beta'
     def log_message(self,format,*args):
         # No vuelca tokens, claves ni datos de alumnado en stdout.
         return
@@ -689,6 +689,10 @@ class Handler(BaseHTTPRequestHandler):
             with data.connect() as d:
                 result=evaluacion.sync_exam(d,int(body['instrument_id']),bool(body.get('replace',False)))
             return self.send({'ok':True,**result})
+        if path=='/api/national/todofp/search-titles':
+            import official_title_index
+            return self.send(official_title_index.search(
+                body.get('grade'),body.get('query',''),body.get('region'),body.get('academic_year')))
         if path=='/api/national/todofp/explore':
             import todofp_discovery
             result=todofp_discovery.explore(body.get('url'),body.get('region'),body.get('academic_year'),
