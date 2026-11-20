@@ -2,7 +2,7 @@
 const S = {page:'inicio', modules:[], moduleId:null, moduleDetails:null, exams:[], examId:null,
   examModuleId:null, examDetails:null, submissions:[], subId:null, subDetails:null,
   uploadExamId:null, uploadStudentId:null, queue:[], pageIndex:0, proposal:null, aiSettings:null, busy:false, manualDraft:null};
-S.calendarVersions=null;S.calendarVersionDiff=null;S.calendarDocumentPreview=null;S.calendarDocumentModuleId=null;S.calendarAiPreview=null;S.calendarAiModuleId=null;S.calendarAiFragment='';
+S.calendarVersions=null;S.calendarVersionDiff=null;S.generalCalendarLibrary=null;S.generalCalendarDiff=null;S.calendarDocumentPreview=null;S.calendarDocumentModuleId=null;S.calendarAiPreview=null;S.calendarAiModuleId=null;S.calendarAiFragment='';
 S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.nationalDocumentPreview=null;
 S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.calendarVersions=null;S.calendarVersionDiff=null;S.curriculumSourceFile=null;S.curriculumSourceKind='';
 S.todofpTitleSearch=null;S.todofpTitleGrade='Superior';S.todofpTitleQuery='';
@@ -422,6 +422,32 @@ function calendarAiPanel(){
  <div class="actions"><button type="button" class="btn secondary" data-action="calendar-ai-use">Cargar solo las fechas marcadas como borrador</button></div>`:''}
  <p class="small">${E(scope.notice)}</p></div>`:''}</details>`;
 }
+function generalCalendarLibraryPanel(){
+ const d=S.wizardDraft||{},cfg=d.schedule||{},data=S.generalCalendarLibrary;
+ const ok=data&&data.territory===d.region&&data.academic_year===S.prepareInfo?.module?.academic_year;
+ const versions=ok?(data.versions||[]):[],dif=S.generalCalendarDiff;
+ return `<details class="guide-calendar-details" id="general-calendar-library" ${versions.length?'open':''}>
+ <summary>Biblioteca de calendarios generales FP del territorio (${versions.length} versiones)</summary>
+ <p class="small">Reutiliza fechas generales de FP del mismo territorio y curso. Estas fichas se han revisado por docentes en este equipo: <b>no están certificadas ni sincronizadas con los boletines oficiales</b>. No incluyen horarios, evaluaciones, FEOE, días de centro o festivos municipales/insulares.</p>
+ ${!ok?'<p class="hint warning">Guarde primero la comunidad del módulo y recargue el asistente para consultar este territorio y curso.</p>':''}
+ ${ok&&versions.length?`<div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Revisión</th><th>Fechas generales</th><th>Fuente</th><th>Acciones</th></tr></thead><tbody>
+ ${versions.map((v,i)=>`<tr><td><b>n.º ${Number(v.revision)}</b><div class="small">${E(v.reviewed_at)}</div></td>
+ <td>${E(v.schedule?.start_date||'Sin inicio')} a ${E(v.schedule?.end_date||'Sin fin')}
+ <div class="small">${(v.schedule?.vacation_periods||[]).length} periodos; ${(v.schedule?.regional_non_teaching_days||[]).length} días generales</div></td>
+ <td><a href="${E(v.source_url)}" target="_blank" rel="noopener noreferrer">${E(v.source_title)}</a>
+ ${v.correction_urls?.length?`<div class="small">${v.correction_urls.map((u,j)=>`<a href="${E(u)}" target="_blank" rel="noopener noreferrer">Corrección ${j+1}</a>`).join(' · ')}</div>`:''}</td>
+ <td><div class="actions"><button class="btn secondary smallbtn" type="button" data-action="general-calendar-apply" data-id="${Number(v.id)}">Cargar propuesta general</button>
+ ${i<versions.length-1?`<button class="btn mutedbtn smallbtn" type="button" data-action="general-calendar-compare" data-old="${Number(versions[i+1].id)}" data-new="${Number(v.id)}">Comparar</button>`:''}</div></td></tr>`).join('')}
+ </tbody></table></div>`:'<p class="small">Todavía no hay fechas generales revisadas para este territorio y curso.</p>'}
+ ${ok&&dif?`<div class="guide-review-line"><b>Comparación de revisiones ${Number(dif.old?.revision)} y ${Number(dif.new?.revision)}</b>
+ ${dif.changes?.length?`<div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Campo</th><th>Anterior</th><th>Posterior</th></tr></thead><tbody>
+ ${dif.changes.map(c=>`<tr><td>${E(c.label)}</td><td>${E(JSON.stringify(c.previous).slice(0,450))}</td><td>${E(JSON.stringify(c.current).slice(0,450))}</td></tr>`).join('')}</tbody></table></div>`:'<p>Coinciden las fechas y fuentes.</p>'}</div>`:''}
+ <p class="small">Para archivar una nueva revisión general, complete el formulario con las fechas, los festivos generales y la disposición oficial. <b>Quite de la lista general las fiestas insulares, municipales y del centro</b> y, si procede, introdúzcalas como días adicionales del centro.</p>
+ <label class="guide-confirm"><input type="checkbox" id="general-calendar-scope-confirm"> Confirmo que he contrastado comunidad, curso y norma, y que los festivos generales no contienen fiestas propias de un municipio, isla o centro. La ficha será una referencia revisada por docente, no una norma verificada automáticamente.</label>
+ <button class="btn secondary" type="button" data-action="general-calendar-save">Archivar calendario general y su fuente para este curso</button>
+ <p class="small">${E(data?.notice||'')}${cfg.island?' Revise específicamente las fiestas de la isla seleccionada.':''}</p>
+ </details>`;
+}
 function calendarVersionsPanel(){
  const data=S.calendarVersions, draft=S.wizardDraft||{},sch=draft.schedule||{};
  if(!data)return `<div class="guide-calendar-details"><p class="small">Las fuentes y las versiones se mostrarán al guardar la comunidad y el centro.</p></div>`;
@@ -637,6 +663,7 @@ function wizardStepMarkup(step, info){
  <div class="field"><label>Descripción y fecha de la fuente</label><input name="schedule-calendar-source-description" maxlength="700" value="${E(d.schedule?.calendar_source_description||'')}" placeholder="Resolución y correcciones aplicables"></div>
  <div class="field"><label>Enlaces a correcciones o modificaciones (una URL HTTPS por línea)</label>
  <textarea name="schedule-calendar-corrections" rows="2" placeholder="https://www.boe.es/...">${E((d.schedule?.calendar_correction_urls||[]).join('\n'))}</textarea></div></div></div>
+ ${generalCalendarLibraryPanel()}
  ${calendarVersionsPanel()}
  <div class="formgrid"><div class="field"><label>URL de la norma que fija las horas de este módulo</label>
  <input type="url" name="schedule-hours-source" maxlength="800" value="${E(d.schedule?.hours_source_url||'')}" placeholder="https://www.boe.es/... o boletín autonómico"></div>
@@ -897,6 +924,7 @@ async function viewPrepare(){
     const region=S.wizardDraft?.region||info.draft.region;
     S.calendarInfo=await API('/api/territories/calendar?region='+encodeURIComponent(region)+'&academic_year='+encodeURIComponent(info.module.academic_year));
  S.calendarVersions=await API('/api/national/calendar/versions?module_id='+Number(S.moduleId));
+ S.generalCalendarLibrary=await API('/api/national/general-calendar?module_id='+Number(S.moduleId));
  }
  if(!S.wizardDraft)S.wizardDraft=JSON.parse(JSON.stringify(info.draft));
  const moduleSelector=`<section class="guide-context"><div class="field"><label>Módulo que estás preparando</label>
@@ -982,6 +1010,7 @@ function collectWizardFields(){
  }}
  // La carga horaria de una comunidad no se traslada a otra al cambiar el ámbito.
  if(previousRegion!==String(S.wizardDraft.region||'Canarias')){
+   S.generalCalendarLibrary=null;S.generalCalendarDiff=null;
    S.calendarDocumentPreview=null;S.calendarDocumentModuleId=null;S.calendarAiPreview=null;S.calendarAiModuleId=null;S.calendarAiFragment='';
    const cfg=S.wizardDraft.schedule||{};
    Object.assign(cfg,{region:S.wizardDraft.region,island:'',municipality:'',
@@ -1624,7 +1653,7 @@ document.addEventListener('change',async event=>{
      toast('Territorio cambiado: se han reiniciado las horas y los datos del calendario anterior.');
    }return;
  }
-  if(el.id==='prepare-module'){S.todofpTitleSearch=null;S.todofpResult=null;S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.calendarVersions=null;S.calendarVersionDiff=null;S.calendarDocumentPreview=null;S.calendarDocumentModuleId=null;S.calendarAiPreview=null;S.calendarAiModuleId=null;S.calendarAiFragment='';S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
+  if(el.id==='prepare-module'){S.todofpTitleSearch=null;S.todofpResult=null;S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.calendarVersions=null;S.calendarVersionDiff=null;S.generalCalendarLibrary=null;S.generalCalendarDiff=null;S.calendarDocumentPreview=null;S.calendarDocumentModuleId=null;S.calendarAiPreview=null;S.calendarAiModuleId=null;S.calendarAiFragment='';S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
  if(el.id==='module-select'){S.moduleId=el.value;S.proposal=null;await page('programaciones');}
  if(el.id==='evaluation-module'){S.evaluationModuleId=Number(el.value);S.evalInstrumentId=null;await page('evaluacion');}
  if(el.id==='eval-instrument-select'){S.evalInstrumentId=Number(el.value);renderEvalScores();}
@@ -2036,6 +2065,49 @@ document.addEventListener('click',async event=>{
    }),'Ficha horaria guardada con su fuente.');
    if(result){S.nationalSources=null;await page('preparar');}return;
  }
+
+ if(action==='general-calendar-compare'){
+   const old=Number(el.dataset.old),newer=Number(el.dataset.new);
+   const result=await busy(()=>API('/api/national/general-calendar/compare?module_id='+Number(S.moduleId)+'&old='+old+'&new='+newer));
+   if(result){S.generalCalendarDiff=result;collectWizardFields();await page('preparar');}return;
+ }
+ if(action==='general-calendar-apply'){
+   collectWizardFields();
+   const data=S.generalCalendarLibrary,yr=S.prepareInfo?.module?.academic_year;
+   if(!data||data.territory!==S.wizardDraft?.region||data.academic_year!==yr){
+     toast('Las fechas disponibles corresponden a otra comunidad o curso.',true);return;}
+   const found=(data.versions||[]).find(v=>Number(v.id)===Number(el.dataset.id));
+   if(!found)return;
+   if(!confirm('Cargar las fechas generales de esta revisión como BORRADOR. Mantendrá horario, evaluaciones, municipio, isla y días adicionales, pero debe comprobar de nuevo sus fiestas locales e insulares. No modifica notas, RA/CE ni FEOE. ¿Continuar?'))return;
+   const next={...S.wizardDraft.schedule};
+   const fields=['start_date','end_date','vacation_periods','regional_non_teaching_days','calendar_source_url',
+     'calendar_source_description','calendar_correction_urls','calendar_academic_year'];
+   for(const key of fields)next[key]=JSON.parse(JSON.stringify(found.schedule[key]));
+   if(next.start_date&&next.end_date&&next.start_date>=next.end_date){
+     toast('Las fechas de inicio y fin no son compatibles.',true);return;}
+   next.calendar_profile_id='';next.calendar_confirmed=false;
+   S.wizardDraft.schedule=next;S.generalCalendarDiff=null;
+   toast('Calendario general cargado sin confirmar. Verifica fiestas locales/insulares y PGA del centro.');
+   await page('preparar');return;
+ }
+ if(action==='general-calendar-save'){
+   collectWizardFields();
+   const cfg=S.wizardDraft?.schedule||{};
+   if(!$('#general-calendar-scope-confirm')?.checked){
+     toast('Confirma que las fechas generales no incluyen fiestas de isla, municipio o centro.',true);return;}
+   if(!cfg.calendar_confirmed||!cfg.calendar_source_url||!cfg.calendar_source_description){
+     toast('Guarda y confirma antes el calendario y la disposición principal.',true);return;}
+   if(!confirm('Archivar una referencia de calendario general para este territorio y curso, excluyendo cualquier campo de centro o horario. No se declarará verificación jurídica automática. ¿Continuar?'))return;
+   if(!await saveWizardPage())return;
+   const result=await busy(()=>API('/api/national/general-calendar/save','POST',{
+      module_id:Number(S.moduleId),teacher_confirmed:true,general_scope_confirmed:true
+   }),'Referencia general archivada en la biblioteca local.');
+   if(result){S.generalCalendarLibrary=null;S.generalCalendarDiff=null;
+     toast(result.record?.unchanged?'La última revisión ya tenía estas fechas.':
+       'Calendario general guardado como revisión n.º '+result.record?.revision+'.');
+     await page('preparar');}return;
+ }
+
  if(action==='calendar-compare'){
    const old=Number(el.dataset.old),newer=Number(el.dataset.new);
    const result=await busy(()=>API('/api/national/calendar/compare?module_id='+Number(S.moduleId)+'&old='+old+'&new='+newer));
