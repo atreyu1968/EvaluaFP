@@ -2,8 +2,9 @@
 const S = {page:'inicio', modules:[], moduleId:null, moduleDetails:null, exams:[], examId:null,
   examModuleId:null, examDetails:null, submissions:[], subId:null, subDetails:null,
   uploadExamId:null, uploadStudentId:null, queue:[], pageIndex:0, proposal:null, aiSettings:null, busy:false, manualDraft:null};
+S.calendarVersions=null;S.calendarVersionDiff=null;
 S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.nationalDocumentPreview=null;
-S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.curriculumSourceFile=null;S.curriculumSourceKind='';
+S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.calendarVersions=null;S.calendarVersionDiff=null;S.curriculumSourceFile=null;S.curriculumSourceKind='';
 S.todofpTitleSearch=null;S.todofpTitleGrade='Superior';S.todofpTitleQuery='';
 S.catalogResults=null;S.catalogPreview=null;S.catalogPreviewScope=null;S.catalogTableText='';S.catalogPicked=null;S.curriculumReview=null;S.feoeMinimumPreview=null;S.aiPreview=null;S.unitProposal=null;S.autoProposedModuleId=null;S.importPreview=null;S.preparePath=null;S.prepareStep=0;S.wizardDraft=null;S.prepareInfo=null;S.advanced=false;S.creatingModule=false;
 const E = s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -342,6 +343,31 @@ DEMO001;Ciclo de ejemplo;Superior;Administración y Gestión;9999;Módulo de eje
  ${todofpExplorerPanel('catalog')}
  <div id="catalog-results">${catalogResultsMarkup()}</div>
  <p class="small">Fuentes oficiales de referencia: <a href="https://todofp.es/catalogos-registros-sistema-fp.html" rel="noopener noreferrer" target="_blank">Catálogo Nacional de Ofertas y Catálogo Modular</a> · <a href="https://www.todofp.es/que-estudiar/material-descargable.html" rel="noopener noreferrer" target="_blank">Títulos y catálogos descargables de TodoFP</a>.</p></section>`;}
+function calendarVersionsPanel(){
+ const data=S.calendarVersions, draft=S.wizardDraft||{},sch=draft.schedule||{};
+ if(!data)return `<div class="guide-calendar-details"><p class="small">Las fuentes y las versiones se mostrarán al guardar la comunidad y el centro.</p></div>`;
+ const links=data.source_directory?.links||[];
+ const scoped=data.territory===draft.region&&data.academic_year===S.prepareInfo?.module?.academic_year&&
+   data.center===draft.center&&data.municipality===(sch.municipality||'')&&data.island===(sch.island||'');
+ const versions=scoped?(data.versions||[]):[];
+ const dif=S.calendarVersionDiff;
+ return `<details class="guide-calendar-details" ${versions.length?'open':''}><summary>Fuentes oficiales e historial de calendarios del centro (${versions.length} versiones)</summary>
+ <p class="small">Consulta la disposición aplicable a FP Grado D, la última corrección y los días municipales o del centro. <b>Los enlaces son puntos de consulta; no validan automáticamente las fechas.</b></p>
+ <div class="actions">${links.map(link=>`<a class="btn secondary smallbtn" href="${E(link.url)}" target="_blank" rel="noopener noreferrer">${E(link.title)}</a>`).join('')}</div>
+ <p class="small">${E(data.source_directory?.notice||'')} El calendario que se guarde queda archivado con su fuente y no se reutiliza para otro curso.</p>
+ ${!scoped?`<p class="hint warning">El centro, municipio, isla, comunidad o curso aún no coinciden con la ficha guardada. Guarde los cambios antes de consultar o recuperar versiones.</p>`:''}
+ ${versions.length?`<div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Versión</th><th>Fecha de revisión</th><th>Procedencia</th><th>Acciones</th></tr></thead><tbody>
+ ${versions.map((v,i)=>`<tr><td><b>n.º ${Number(v.revision)}</b></td><td>${E(v.reviewed_at)}</td><td><a href="${E(v.source_url)}" target="_blank" rel="noopener noreferrer">${E(v.source_title)}</a>
+ ${v.correction_urls?.length?`<div class="small">Correcciones: ${v.correction_urls.map((u,j)=>`<a href="${E(u)}" target="_blank" rel="noopener noreferrer">${j+1}</a>`).join(' · ')}</div>`:''}
+ </td><td><div class="actions"><button type="button" class="btn mutedbtn smallbtn" data-action="calendar-load-version" data-id="${Number(v.id)}">Cargar como propuesta</button>
+ ${i<versions.length-1?`<button type="button" class="btn secondary smallbtn" data-action="calendar-compare" data-old="${Number(versions[i+1].id)}" data-new="${Number(v.id)}">Comparar</button>`:''}</div></td></tr>`).join('')}
+ </tbody></table></div>`:'<p class="small">Todavía no existen versiones guardadas para este centro, municipio, territorio y curso.</p>'}
+ ${scoped&&dif?`<div class="guide-review-line"><h4>Cambios entre las versiones ${Number(dif.old?.revision)} y ${Number(dif.new?.revision)}</h4>
+ ${dif.changes?.length?`<div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Elemento</th><th>Anterior</th><th>Posterior</th></tr></thead><tbody>${dif.changes.map(change=>`<tr><td>${E(change.label)}</td><td>${E(JSON.stringify(change.previous).slice(0,650))}</td><td>${E(JSON.stringify(change.current).slice(0,650))}</td></tr>`).join('')}</tbody></table></div>`:'<p>Las fechas, los festivos y las fuentes coinciden.</p>'}
+ <p class="small">${E(dif.notice)}</p></div>`:''}
+ <p class="small">Cargar una versión no cambia el horario semanal, las unidades, la FEOE ni las calificaciones y desmarca la confirmación del calendario.</p>
+ </details>`;
+}
 function nationalSourcesPanel(){
  const record=S.nationalSources;
  if(!record)return `<p class="small">Las fuentes oficiales se consultarán cuando abra esta sección.</p>`;
@@ -527,7 +553,10 @@ function wizardStepMarkup(step, info){
  <div class="formgrid"><div class="field"><label>Vacaciones (inicio;fin;motivo)</label><textarea name="schedule-vacations" rows="4" placeholder="2026-12-23;2027-01-08;Navidad">${E(calendarVacationLines(d.schedule))}</textarea></div>
  <div class="field"><label>Festivos autonómicos, insulares y nacionales (fecha;motivo)</label><textarea name="schedule-regional-days" rows="4" placeholder="2026-10-12;Fiesta Nacional">${E(calendarHolidayLines(d.schedule))}</textarea></div>
  <div class="field"><label>URL de la resolución de calendario escolar del curso y comunidad</label><input name="schedule-calendar-source" type="url" maxlength="800" value="${E(d.schedule?.calendar_source_url||'')}" placeholder="https://..."></div>
- <div class="field"><label>Descripción y fecha de la fuente</label><input name="schedule-calendar-source-description" maxlength="700" value="${E(d.schedule?.calendar_source_description||'')}" placeholder="Resolución y correcciones aplicables"></div></div></div>
+ <div class="field"><label>Descripción y fecha de la fuente</label><input name="schedule-calendar-source-description" maxlength="700" value="${E(d.schedule?.calendar_source_description||'')}" placeholder="Resolución y correcciones aplicables"></div>
+ <div class="field"><label>Enlaces a correcciones o modificaciones (una URL HTTPS por línea)</label>
+ <textarea name="schedule-calendar-corrections" rows="2" placeholder="https://www.boe.es/...">${E((d.schedule?.calendar_correction_urls||[]).join('\n'))}</textarea></div></div></div>
+ ${calendarVersionsPanel()}
  <div class="formgrid"><div class="field"><label>URL de la norma que fija las horas de este módulo</label>
  <input type="url" name="schedule-hours-source" maxlength="800" value="${E(d.schedule?.hours_source_url||'')}" placeholder="https://www.boe.es/... o boletín autonómico"></div>
  <div class="field"><label>Nombre y versión de la disposición horaria</label>
@@ -786,6 +815,7 @@ async function viewPrepare(){
  if(S.preparePath==='create'&&S.prepareStep===4){
     const region=S.wizardDraft?.region||info.draft.region;
     S.calendarInfo=await API('/api/territories/calendar?region='+encodeURIComponent(region)+'&academic_year='+encodeURIComponent(info.module.academic_year));
+ S.calendarVersions=await API('/api/national/calendar/versions?module_id='+Number(S.moduleId));
  }
  if(!S.wizardDraft)S.wizardDraft=JSON.parse(JSON.stringify(info.draft));
  const moduleSelector=`<section class="guide-context"><div class="field"><label>Módulo que estás preparando</label>
@@ -874,7 +904,7 @@ function collectWizardFields(){
    const cfg=S.wizardDraft.schedule||{};
    Object.assign(cfg,{region:S.wizardDraft.region,island:'',municipality:'',
     calendar_confirmed:false,calendar_profile_id:'',calendar_source_url:'',
-    calendar_source_description:'',calendar_academic_year:'',
+    calendar_source_description:'',calendar_correction_urls:[],calendar_academic_year:'',
     start_date:'',end_date:'',evaluation_ends:['','',''],
     vacation_periods:[],regional_non_teaching_days:[],extra_non_teaching_days:[],
     hours_confirmed:false,weekly_hours:0,total_hours:0,weekday_hours:[0,0,0,0,0],
@@ -914,6 +944,7 @@ function collectWizardFields(){
  cfg.regional_non_teaching_days=readHolidayLines(field('schedule-regional-days'));
  cfg.calendar_source_url=field('schedule-calendar-source').trim();
  cfg.calendar_source_description=field('schedule-calendar-source-description').trim();
+ cfg.calendar_correction_urls=field('schedule-calendar-corrections').split(/[\r\n]+/).map(x=>x.trim()).filter(Boolean);
  cfg.calendar_confirmed=Boolean(form.elements['schedule-confirmed']?.checked);
  cfg.feoe_start=field('schedule-feoe-start');cfg.feoe_end=field('schedule-feoe-end');
  cfg.feoe_center_hours_weekly=field('schedule-feoe-center-hours')===''?null:Number(field('schedule-feoe-center-hours'));
@@ -1511,7 +1542,7 @@ document.addEventListener('change',async event=>{
      toast('Territorio cambiado: se han reiniciado las horas y los datos del calendario anterior.');
    }return;
  }
-  if(el.id==='prepare-module'){S.todofpTitleSearch=null;S.todofpResult=null;S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
+  if(el.id==='prepare-module'){S.todofpTitleSearch=null;S.todofpResult=null;S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.normativeMonitor=null;S.calendarVersions=null;S.calendarVersionDiff=null;S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
  if(el.id==='module-select'){S.moduleId=el.value;S.proposal=null;await page('programaciones');}
  if(el.id==='evaluation-module'){S.evaluationModuleId=Number(el.value);S.evalInstrumentId=null;await page('evaluacion');}
  if(el.id==='eval-instrument-select'){S.evalInstrumentId=Number(el.value);renderEvalScores();}
@@ -1808,6 +1839,28 @@ document.addEventListener('click',async event=>{
    }),'Ficha horaria guardada con su fuente.');
    if(result){S.nationalSources=null;await page('preparar');}return;
  }
+ if(action==='calendar-compare'){
+   const old=Number(el.dataset.old),newer=Number(el.dataset.new);
+   const result=await busy(()=>API('/api/national/calendar/compare?module_id='+Number(S.moduleId)+'&old='+old+'&new='+newer));
+   if(result){S.calendarVersionDiff=result;collectWizardFields();await page('preparar');}return;
+ }
+ if(action==='calendar-load-version'){
+   const stored=S.calendarVersions;
+   const version=(stored?.versions||[]).find(v=>Number(v.id)===Number(el.dataset.id));
+   if(!version)return;
+   collectWizardFields();
+   const c=S.wizardDraft?.schedule||{};
+   const valid=stored.territory===S.wizardDraft.region&&stored.academic_year===S.prepareInfo?.module?.academic_year&&
+     stored.center===S.wizardDraft.center&&stored.municipality===(c.municipality||'')&&stored.island===(c.island||'');
+   if(!valid){toast('La ficha corresponde a otro centro, municipio, isla, curso o comunidad.',true);return;}
+   if(!confirm('Cargar la versión '+version.revision+' como propuesta editable. El calendario quedará SIN confirmar y no alterará horas, FEOE, unidades ni notas. ¿Continuar?'))return;
+   const keys=['region','island','municipality','start_date','end_date','evaluation_ends','vacation_periods',
+     'regional_non_teaching_days','extra_non_teaching_days','calendar_profile_id','calendar_academic_year',
+     'calendar_source_url','calendar_source_description','calendar_correction_urls'];
+   for(const key of keys)if(Object.hasOwn(version.schedule,key))c[key]=JSON.parse(JSON.stringify(version.schedule[key]));
+   c.calendar_confirmed=false;S.wizardDraft.schedule=c;S.calendarVersionDiff=null;
+   toast('Versión cargada para revisión docente. Debes confirmar las fechas y el centro.');await page('preparar');return;
+ }
  if(action==='national-save-calendar'){
    collectWizardFields();
    const c=S.wizardDraft?.schedule||{};
@@ -1817,7 +1870,9 @@ document.addEventListener('click',async event=>{
    const result=await busy(()=>API('/api/national/save-calendar','POST',{
      module_id:Number(S.moduleId),teacher_confirmed:true
    }),'Calendario del centro guardado.');
-   if(result){S.nationalSources=null;await page('preparar');}return;
+   if(result){S.nationalSources=null;S.calendarVersions=null;S.calendarVersionDiff=null;
+     toast(result.record?.revision?.unchanged?'Esta ficha coincide con la última versión.':'Calendario archivado como nueva versión '+result.record?.revision?.revision+'.');
+     await page('preparar');}return;
  }
  if(action==='national-apply-calendar'){
    const saved=S.nationalSources?.calendar_record;
