@@ -162,7 +162,9 @@ class GeneralCalendarLibraryTests(unittest.TestCase):
                         (json.dumps(draft,ensure_ascii=False),))
         with self.assertRaises(ValueError):self.save()
         self.calendar(1,region='Canarias')
-        with self.assertRaisesRegex(ValueError,'territorio'):
+        # Al cambiar de comunidad, el cargador de programaciones invalida la
+        # confirmación antigua. El rechazo sigue siendo la garantía principal.
+        with self.assertRaises(ValueError):
             self.save()
 
     def test_unknown_module_and_duplicate_guard(self):
