@@ -284,6 +284,29 @@ function catalogResultsMarkup(){
  <button class="btn" type="button" data-action="catalog-import">Guardar filas confirmadas en el catálogo local</button></div>`:''}`;
 }
 function updateCatalogResults(){const el=$('#catalog-results');if(el)el.innerHTML=catalogResultsMarkup();}
+function todofpExplorerPanel(place){
+ const result=S.todofpResult;
+ const allowed=result&&result.region&&(place==='catalog'||place==='builder');
+ return `<section class="guide-calendar-summary" id="todofp-explorer"><h3>Consultar ficha estatal de un ciclo y sus currículos autonómicos (TodoFP)</h3>
+ <p class="small">Pega el enlace HTTPS de la ficha del ciclo en el portal oficial TodoFP. La aplicación localizará los módulos indicados y, cuando existan, los enlaces a currículo y modificaciones de tu comunidad. <b>Esta ficha no acredita horas, códigos ausentes ni implantación territorial.</b></p>
+ <div class="actions"><div class="field" style="flex:1;min-width:260px"><label>Enlace oficial del ciclo o de su página «Currículos CCAA»</label>
+ <input id="todofp-url" type="url" maxlength="700" value="${E(S.todofpURL||'')}" placeholder="https://www.todofp.es/que-estudiar/familias-profesionales/...html"></div>
+ <button class="btn secondary" type="button" data-action="todofp-explore">Consultar fuentes del territorio y curso</button></div>
+ ${allowed?`<div class="guide-review-line"><p><b>${result.profile?E(result.profile.title):'Currículos autonómicos'}</b> · ${E(result.region)} · ${E(result.academic_year)}</p>
+ ${result.profile?`<p>${result.profile.modules_count} módulos identificados en la ficha estatal. Los códigos en blanco no se han inventado.</p>
+ <div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Código indicado</th><th>Módulo</th>${place==='catalog'?'<th>Acción</th>':''}</tr></thead><tbody>
+ ${result.profile.modules.slice(0,35).map((m,i)=>`<tr><td>${E(m.code||'Sin código en esta ficha')}</td><td>${E(m.name)}${m.optional?' · Optativo':''}</td>
+ ${place==='catalog'?`<td><button type="button" class="btn mutedbtn smallbtn" data-action="todofp-select-module" data-todofp-index="${i}">Utilizar nombre</button></td>`:''}</tr>`).join('')}</tbody></table></div>`:''}
+ <p><b>Fuentes de ${E(result.region)}:</b> ${Number(result.regional_curricula?.count||0)} referencias localizadas.</p>
+ ${(result.regional_curricula?.links||[]).length?`<div class="guide-weight-scroll"><table class="guide-metrics-table"><thead><tr><th>Tipo</th><th>Documento</th></tr></thead><tbody>
+ ${result.regional_curricula.links.map(x=>`<tr><td>${E(x.type)}</td><td><a target="_blank" rel="noopener noreferrer" href="${E(x.url)}">${E(x.label)}</a></td></tr>`).join('')}</tbody></table></div>`:
+ '<p class="hint">TodoFP no ha ofrecido referencias para este ámbito, o la página no se ha podido consultar. Hay que revisar el boletín correspondiente.</p>'}
+ ${result.profile?.state_norm_url?`<p>Normativa estatal: <a href="${E(result.profile.state_norm_url)}" target="_blank" rel="noopener noreferrer">Consultar Real Decreto del título</a></p>`:''}
+ ${result.suitable_for_current_module===false?'<p class="hint warning">Atención: el ciclo o módulo consultado no coincide con el seleccionado. No añadas estos enlaces como si pertenecieran al currículo de tu módulo.</p>':''}
+ <p class="small">${E(result.notice)}</p>
+ ${place==='builder'&&(result.regional_curricula?.links?.length||result.profile?.state_norm_url)?'<button type="button" class="btn secondary" data-action="todofp-add-refs">Añadir enlaces al borrador como referencias pendientes de revisión</button>':''}
+ </div>`:''}</section>`;
+}
 function catalogPanel(){return `<section class="panel" id="catalog-fp-panel"><h2>Catálogo de títulos y módulos · Biblioteca del centro</h2>
  <p>Busca módulos ya registrados para <strong>la comunidad y el curso seleccionados arriba</strong>, o importa la tabla de una disposición revisada. No se copiarán RA, CE ni horas a otra administración.</p>
  <div class="formgrid"><div class="field"><label for="catalog-query">Buscar por código, ciclo, familia o módulo</label><input id="catalog-query" maxlength="100" placeholder="Ej.: 0650, Gestión Administrativa, Sanidad"></div>
@@ -298,6 +321,7 @@ DEMO001;Ciclo de ejemplo;Superior;Administración y Gestión;9999;Módulo de eje
  <label class="guide-confirm"><input id="catalog-confirmed" type="checkbox"> Confirmo que he contrastado código, título, módulos, territorio, curso y fuente, y que deseo conservar estas fichas en el centro.</label>
  <div class="actions"><button type="button" class="btn secondary" data-action="catalog-preview">Comprobar tabla antes de guardar</button></div>
  <p class="small">Para evitar sustituciones accidentales, las discrepancias con fichas existentes se rechazan. Las horas, RA/CE y notas no se modifican.</p></details>
+ ${todofpExplorerPanel('catalog')}
  <div id="catalog-results">${catalogResultsMarkup()}</div>
  <p class="small">Fuentes oficiales de referencia: <a href="https://todofp.es/catalogos-registros-sistema-fp.html" rel="noopener noreferrer" target="_blank">Catálogo Nacional de Ofertas y Catálogo Modular</a> · <a href="https://www.todofp.es/que-estudiar/material-descargable.html" rel="noopener noreferrer" target="_blank">Títulos y catálogos descargables de TodoFP</a>.</p></section>`;}
 function nationalSourcesPanel(){
@@ -373,6 +397,7 @@ function wizardStepMarkup(step, info){
  case 1:return `<h2>2. Normativa y objetivos</h2><p class="hint warning">EvalúaFP no inventa normativa ni sustituye su revisión. Contraste la identificación del título y el currículo vigente en su comunidad autónoma.</p>
  ${nationalSourcesPanel()}
  ${boeDiscoveryPanel()}
+ ${todofpExplorerPanel('builder')}
  ${guideField('curriculum_source_url','URL del currículo oficial aplicable','BOE, boletín autonómico o web oficial. Debe corresponder al territorio y curso indicados.',1)}
  ${guideField('curriculum_source_description','Título, identificación y versión de la disposición curricular','Indique la fecha y las modificaciones comprobadas.',1)}
  <label class="guide-confirm"><input type="checkbox" name="curriculum-confirmed" ${d.curriculum_confirmed?'checked':''}> He contrastado que el currículo y sus RA/CE corresponden a mi ciclo, módulo, comunidad y curso.</label>
@@ -751,6 +776,7 @@ async function viewPrepare(){
  <p>Para evitar RA y CE inventados, EvalúaFP necesita los enunciados desde una fuente comprobable.</p>
  ${curriculumReviewPanel()}
  ${boeDiscoveryPanel()}
+ ${todofpExplorerPanel('builder')}
  <div class="field"><label>Identificador del BOE (si lo conoces)</label><input id="guide-boe" placeholder="BOE-A-AAAA-NNN" value="${E(S.boeSelectedId||'')}"></div>
  <div class="actions"><button class="btn" type="button" data-action="guided-boe">Consultar RA y CE en el BOE</button>
  <button class="btn secondary" data-action="prepare-select-path" data-path="import">Importar una programación existente</button>
@@ -1411,11 +1437,13 @@ document.addEventListener('change',async event=>{
    }
    if(el.name==='territory'||el.name==='academic_year'){
       S.catalogResults=null;S.catalogPreview=null;S.catalogPreviewScope=null;updateCatalogResults();
+      S.todofpResult=null; // No mostrar enlaces del territorio o curso anterior.
+      const explorer=$('#todofp-explorer');if(explorer)explorer.outerHTML=todofpExplorerPanel('catalog');
    }
    return;
  }
  if(el.id==='guide-region'){
-   S.nationalSources=null;S.boeCandidates=null;S.boeInspection=null;
+   S.nationalSources=null;S.boeCandidates=null;S.boeInspection=null;S.todofpResult=null;
    const newRegion=el.value;const oldRegion=S.wizardDraft?.region;
    if(oldRegion!==newRegion){
      collectWizardFields();
@@ -1433,7 +1461,7 @@ document.addEventListener('change',async event=>{
      toast('Territorio cambiado: se han reiniciado las horas y los datos del calendario anterior.');
    }return;
  }
-  if(el.id==='prepare-module'){S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
+  if(el.id==='prepare-module'){S.todofpResult=null;S.curriculumReview=null;S.curriculumHistory=null;S.curriculumHistoryDiff=null;S.curriculumSourceFile=null;S.boeCandidates=null;S.boeInspection=null;S.boeSelectedId='';S.moduleId=Number(el.value);S.preparePath=null;S.autoProposedModuleId=null;S.wizardDraft=null;S.proposal=null;await page('preparar');return;}
  if(el.id==='module-select'){S.moduleId=el.value;S.proposal=null;await page('programaciones');}
  if(el.id==='evaluation-module'){S.evaluationModuleId=Number(el.value);S.evalInstrumentId=null;await page('evaluacion');}
  if(el.id==='eval-instrument-select'){S.evalInstrumentId=Number(el.value);renderEvalScores();}
@@ -1519,6 +1547,59 @@ document.addEventListener('click',async event=>{
    if(result){collectWizardFields();S.nationalTableText=result.table;S.nationalTablePreview=result;
      toast('Se han reconocido '+result.count+' módulos; revisa las filas y la disposición antes de guardarlas.');
      await page('preparar');}return;
+ }
+ if(action==='todofp-explore'){
+   const src=$('#todofp-url')?.value.trim()||'';
+   if(!src){toast('Indique el enlace oficial a la ficha TodoFP del ciclo.',true);return;}
+   const inWizard=S.preparePath==='create'&&Boolean(S.prepareInfo?.module)&&Boolean($('#prepare-wizard-form'));
+   if(inWizard)collectWizardFields();
+   const scope=inWizard?{region:S.wizardDraft.region,academic_year:S.prepareInfo.module.academic_year}:catalogScopeFromForm();
+   const result=await busy(()=>API('/api/national/todofp/explore','POST',{url:src,...scope,
+     cycle_name:inWizard?S.prepareInfo.module.cycle:'',module_name:inWizard?S.prepareInfo.module.name:''}),
+     'Ficha consultada: revise el currículo y las modificaciones de la comunidad.');
+   if(result){
+     S.todofpURL=src;S.todofpResult=result;
+     // No reconstruir el formulario de creación: conservar comunidad,
+     // curso, nombre y grupo que el docente ya ha escrito.
+     const panel=$('#todofp-explorer');
+     if(panel)panel.outerHTML=todofpExplorerPanel(inWizard?'builder':'catalog');
+     else await page('preparar');
+   }return;
+ }
+ if(action==='todofp-select-module'){
+   const current=S.todofpResult;
+   const form=catalogCreationForm();
+   const scope=catalogScopeFromForm();
+   if(!form||!current?.profile||scope.region!==current.region||scope.academic_year!==current.academic_year){
+     toast('Compruebe de nuevo comunidad y curso antes de utilizar un nombre.',true);return;
+   }
+   const found=current.profile.modules[Number(el.dataset.todofpIndex)];
+   if(!found)return;
+   form.elements.cycle.value=current.profile.title;
+   form.elements.name.value=found.name;
+   form.elements.catalog_entry_id.value='';S.catalogPicked=null;
+   const note=form.querySelector('[data-catalog-selection]');
+   if(note)note.textContent='Denominación orientativa de TodoFP; compruebe los códigos en la norma aplicable. No se han confirmado RA, CE ni horas.';
+   toast('Denominación propuesta: revise la normativa antes de guardar el módulo.');return;
+ }
+ if(action==='todofp-add-refs'){
+   const result=S.todofpResult;
+   if(!S.wizardDraft||!result||!S.prepareInfo||result.suitable_for_current_module===false||result.region!==S.wizardDraft.region||result.academic_year!==S.prepareInfo.module.academic_year){
+      toast('La consulta no corresponde a este módulo, curso o comunidad. Repita la búsqueda.',true);return;
+   }
+   if(!confirm('Los enlaces son solo candidatos para consulta. ¿Añadirlos al borrador como pendientes, sin confirmar automáticamente el currículo?'))return;
+   collectWizardFields();
+   const refs=[...(result.regional_curricula?.links||[]).map(x=>({label:x.label,url:x.url}))];
+   if(result.profile?.state_norm_url)refs.unshift({label:'Norma estatal del título',url:result.profile.state_norm_url});
+   let old=S.wizardDraft.normative_references||'';
+   for(const r of refs){if(!old.includes(r.url))old+=(old?'\n':'')+'FUENTE LOCALIZADA POR TODOFP, PENDIENTE DE COMPROBAR ('+result.region+', '+result.academic_year+'): '+r.label+' · '+r.url;}
+   S.wizardDraft.normative_references=old;
+   S.wizardDraft.curriculum_confirmed=false;
+   S.wizardDraft.assistant_meta=S.wizardDraft.assistant_meta||{};
+   S.wizardDraft.assistant_meta.normative_references={origin:'Directorios TodoFP (pendiente de validar)',teacher_edited:true};
+   const saved=await busy(()=>API('/api/programming-builder/save','POST',{module_id:Number(S.moduleId),draft:S.wizardDraft}),
+        'Fuentes candidatas guardadas para revisión; currículo sin confirmar.');
+   if(saved)await page('preparar');return;
  }
  if(action==='catalog-search'){
    const scope=catalogScopeFromForm();

@@ -39,7 +39,7 @@ import schedule_engine
 import program_importer
 import program_assistant
 
-APP_VERSION = "1.2.3-beta"
+APP_VERSION = "1.2.4-beta"
 TOKEN = secrets.token_urlsafe(32)
 WEB = (Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'web')
 
@@ -398,7 +398,7 @@ def register_students(db, module_id, incoming):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version='EvaluaFP/1.2.3-beta'
+    server_version='EvaluaFP/1.2.4-beta'
     def log_message(self,format,*args):
         # No vuelca tokens, claves ni datos de alumnado en stdout.
         return
@@ -689,6 +689,11 @@ class Handler(BaseHTTPRequestHandler):
             with data.connect() as d:
                 result=evaluacion.sync_exam(d,int(body['instrument_id']),bool(body.get('replace',False)))
             return self.send({'ok':True,**result})
+        if path=='/api/national/todofp/explore':
+            import todofp_discovery
+            result=todofp_discovery.explore(body.get('url'),body.get('region'),body.get('academic_year'),
+                cycle_name=body.get('cycle_name',''),module_name=body.get('module_name',''))
+            return self.send(result)
         if path=='/api/national/catalog/preview':
             import fp_catalog
             # El ámbito de la tabla procede del formulario: solo se guarda tras confirmación.

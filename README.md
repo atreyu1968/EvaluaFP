@@ -1,3 +1,13 @@
+# EvalúaFP 1.2.4 beta — Explorar módulos y currículos de TodoFP por comunidad
+
+**Nueva ayuda nacional:** desde la creación de un módulo o la programación didáctica se puede consultar una ficha de ciclo de TodoFP, localizar módulos identificados y abrir los currículos/modificaciones enlazados para la administración educativa seleccionada. Los códigos que no constan, las horas y la vigencia **siguen pendientes de contrastar por el docente**. La consulta no altera automáticamente RA/CE, notas ni calendario.
+
+Consulta [los cambios de la versión](CAMBIOS_v124_BETA.md) y [la especificación técnica](docs/EXPLORADOR_TODOFP_1.2.4.md).
+
+**Instalación:** haga una copia de seguridad y extraiga las fuentes en una carpeta nueva. Esta entrega no incluye un ejecutable recompilado. La consulta necesita Internet y no ha podido probarse en vivo contra TodoFP desde este entorno, por lo que se distribuye como **beta**.
+
+---
+
 # EvalúaFP 1.2.3 beta — Catálogo territorial de títulos y módulos
 
 **Actualización de 20/11/2026:** búsqueda e importación de fichas de títulos y módulos en los 19 ámbitos educativos españoles, con código, grado, familia, fuente normativa, curso académico y revisión docente; selección del módulo desde la ficha sin recrear sus datos. La importación **no confirma automáticamente RA/CE, horas, legislación ni calendarios**. Es un catálogo incremental local, no una réplica completa de los registros estatales. Consulte [Cambios 1.2.3](CAMBIOS_v123_BETA.md) y [la guía técnica](docs/CATALOGO_FP_NACIONAL_1.2.3.md).
