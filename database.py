@@ -148,6 +148,8 @@ def init():
         # Historial opt-in de versiones de fuentes curriculares (no altera notas).
         import curriculum_history
         curriculum_history.migrate(d)
+        import normative_monitor
+        normative_monitor.migrate(d)
         # 1.1: borradores de programación didáctica, sin alterar documentos ni calificaciones.
         import program_builder
         program_builder.migrate(d)
