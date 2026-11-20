@@ -378,6 +378,7 @@ function calendarDocumentPanel(){
  ${!scope.scope_ok?'<p class="hint warning">No se ha acreditado conjuntamente territorio, curso y etapa FP en el texto. Las fechas son solo orientativas y no se pueden cargar automáticamente.</p>':''}
  ${(scope.warnings||[]).length?`<details><summary>Advertencias (${scope.warnings.length})</summary><div class="hint warning">${scope.warnings.map(x=>`<p>${E(x)}</p>`).join('')}</div></details>`:''}
  ${rows||'<p class="small">No se ha obtenido ninguna fecha inequívoca.</p>'}
+ ${scope.scope_ok&&scope.suggested_ai_fragment?`<div class="actions"><button type="button" class="btn secondary" data-action="calendar-copy-ai-excerpt">Preparar fragmento del documento para revisarlo con IA (sin enviarlo)</button></div>`:''}
  ${scope.scope_ok&&hasValues?`<label class="guide-confirm"><input id="calendar-document-confirm" type="checkbox"> He cotejado el documento con la administración educativa, el curso y la etapa FP Grado D. Comprendo que la extracción no determina la vigencia ni confirma el calendario del centro.</label>
  <div class="actions"><button type="button" class="btn secondary" data-action="calendar-document-use">Cargar solo las fechas marcadas como borrador</button></div>`:''}
  <p class="small">${E(scope.notice)}</p></div>`:''}</details>`;
@@ -1769,6 +1770,18 @@ document.addEventListener('click',async event=>{
    await page('preparar');return;
  }
 
+ if(action==='calendar-copy-ai-excerpt'){
+   const report=S.calendarDocumentPreview;
+   if(!report||!report.scope_ok||report.region!==S.wizardDraft?.region||
+      report.academic_year!==S.prepareInfo?.module?.academic_year||
+      Number(S.calendarDocumentModuleId)!==Number(S.moduleId)){
+       toast('El documento no corresponde a este territorio, curso o módulo.',true);return;
+   }
+   S.calendarAiFragment=report.suggested_ai_fragment||'';
+   S.calendarAiPreview=null;S.calendarAiModuleId=null;
+   toast('Fragmento preparado en el cuadro de IA. Revísalo antes de autorizar cualquier envío.');
+   collectWizardFields();await page('preparar');return;
+ }
  if(action==='calendar-ai-analyze'){
    const fragment=$('#calendar-ai-fragment')?.value.trim()||'';
    if(fragment.length<35||fragment.length>12000){
@@ -1793,6 +1806,9 @@ document.addEventListener('click',async event=>{
  }
  if(action==='calendar-ai-use'){
    const report=S.calendarAiPreview,m=S.prepareInfo?.module;
+   if(($('#calendar-ai-fragment')?.value||'').trim()!==S.calendarAiFragment){
+      toast('Has modificado el fragmento después del análisis. Repite la comprobación con IA.',true);return;
+   }
    if(!report||!report.scope_ok||report.region!==S.wizardDraft?.region||
       report.academic_year!==m?.academic_year||Number(S.calendarAiModuleId)!==Number(S.moduleId)){
       toast('La vista previa corresponde a otro módulo, territorio o curso. Repite la extracción.',true);return;}
