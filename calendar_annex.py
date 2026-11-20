@@ -23,7 +23,7 @@ def _kind(header):
     if h in STAGE_HEADERS:return 'stage'
     if 'inicio' in h or 'comienzo' in h:
         if any(k in h for k in ('clases','lectiva','actividad','curso')):return 'start'
-    if 'fin ' in h or h.startswith('fin') or 'finalizacion' in h:
+    if 'fin ' in h or h.startswith('fin') or 'finalizacion' in h or 'final de' in h:
         if any(k in h for k in ('clases','lectiva','actividad','curso')):return 'end'
     if 'vacaciones' in h or 'navidad' in h or 'semana santa' in h:return 'vacation'
     return None
