@@ -141,15 +141,29 @@ def _period_label(context):
 
 def _candidates(records, academic_year):
     candidates=[];warnings=[]
+    # Conserva la etapa identificada por los últimos encabezados cortos de la
+    # misma página. Una fecha de Bachillerato en la línea posterior a su
+    # encabezado no debe atribuirse automáticamente a FP.
+    active_stage=None
+    previous_page=None
     # Se limita la extracción a líneas/filas que ofrezcan una relación explícita
     # con el concepto. No se rellena nunca un año ausente en el texto.
     for row in records[:MAX_RECORDS]:
         original=' '.join(row['text'].split())[:450]
         if not original:continue
         folded=territories.fold(original)
-        # La normalización NFKD conserva la longitud habitual de las fechas.
-        # No sustituimos por la línea anterior si esta podría referirse a otra etapa.
+        current_page=row['location'] if row['location'].startswith('página ') else None
+        if current_page and previous_page and current_page!=previous_page:
+            active_stage=None
+        previous_page=current_page
+        if not DATE_RE.search(folded) and len(folded)<=140:
+            if OTHER_STAGE_RE.search(folded) and not FP_RE.search(folded):
+                active_stage='other'
+            elif FP_RE.search(folded):
+                active_stage='fp'
         if OTHER_STAGE_RE.search(folded) and not FP_RE.search(folded):
+            continue
+        if active_stage=='other' and not FP_RE.search(folded):
             continue
         found=list(DATE_RE.finditer(folded))
         if not found:continue
