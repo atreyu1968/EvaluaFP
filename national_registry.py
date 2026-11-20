@@ -212,8 +212,14 @@ def find_calendar(db,module_id):
         (code,module['academic_year'],territories.fold(center))).fetchone()
     if not row:return None
     result=dict(row)
+    stored=json.loads(result['configuration_json'])
+    current=draft['schedule']
+    if territories.fold(stored.get('municipality','')) != territories.fold(current.get('municipality','')):
+        return None
+    if territories.fold(stored.get('island','')) != territories.fold(current.get('island','')):
+        return None
     return {'territory_code':code,'academic_year':module['academic_year'],'center':center,
-            'schedule':json.loads(result['configuration_json']),
+            'schedule':stored,
             'source_url':result['source_url'],'source_title':result['source_title'],
             'checked_at':result['checked_at'],'status':'confirmado_por_docente_en_biblioteca_local',
             'notice':'Calendario conservado para el mismo centro y curso. Revise actualizaciones y festivos locales antes de aplicarlo a otro grupo.'}
