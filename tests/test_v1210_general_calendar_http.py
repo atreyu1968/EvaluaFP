@@ -86,9 +86,16 @@ class GeneralCalendarHTTPTests(unittest.TestCase):
            {'module_id':mid,'teacher_confirmed':True,'general_scope_confirmed':True})
         second=updated['record']['id']
         self.assertEqual(updated['record']['revision'],2)
+        # Contrasta también la consulta directa con la serialización HTTP.
+        import general_calendar_library
+        with database.connect() as db:
+            rows=[dict(x) for x in db.execute(
+                'SELECT id,territory_code,academic_year,stage FROM national_general_fp_calendars').fetchall()]
+            direct=general_calendar_library.compare(db,mid,first,second)
+            self.assertEqual(len(direct['changes']),1,rows)
         status,diff=self.request(
             f'api/national/general-calendar/compare?module_id={mid}&old={first}&new={second}')
-        self.assertEqual(status,200, diff)
+        self.assertEqual(status,200, {'result':diff,'first':first,'second':second,'rows':rows})
         self.assertIn('start_date',[x['field'] for x in diff['changes']])
         _,newlist=self.request(path)
         self.assertEqual(newlist['count'],2)
