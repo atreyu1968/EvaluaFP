@@ -39,7 +39,7 @@ import schedule_engine
 import program_importer
 import program_assistant
 
-APP_VERSION = "1.2.5-beta"
+APP_VERSION = "1.2.8-beta"
 TOKEN = secrets.token_urlsafe(32)
 WEB = (Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent)) / 'web')
 
@@ -649,7 +649,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_file(location,'application/zip',location.name)
             raise ValueError('Ruta GET desconocida.')
         if self.command!='POST':raise ValueError('Método no permitido')
-        if path in ('/api/programmings/upload','/api/materials/upload','/api/submissions/upload','/api/submissions/batch','/api/evaluation/import','/api/national/document-preview','/api/curriculum/review-preview','/api/curriculum/history/store'):
+        if path in ('/api/programmings/upload','/api/materials/upload','/api/submissions/upload','/api/submissions/batch','/api/evaluation/import','/api/national/document-preview','/api/national/calendar-document-preview','/api/curriculum/review-preview','/api/curriculum/history/store'):
+            if path=='/api/national/calendar-document-preview' and int(self.headers.get('Content-Length','0'))>16*1024*1024:
+                raise ValueError('El calendario supera el límite de 15 MB más los campos del formulario.')
             fields,files=multipart(self)
         else:
             body=read_json(self)
@@ -815,6 +817,21 @@ class Handler(BaseHTTPRequestHandler):
             report['existing_ra_count']=len(existing)
             report['can_auto_apply']=False
             return self.send(report)
+        if path=='/api/national/calendar-document-preview':
+            import calendar_document
+            mid=int(fields.get('module_id','0'))
+            with data.connect() as d:
+                module=must_row(d,'SELECT territory,academic_year FROM modules WHERE id=?',(mid,))
+                region=territories.require_territory(fields.get('region',''))
+                year=territories.year_code(fields.get('academic_year',''))
+                if module['academic_year']!=year or territories.require_territory(module['territory'])!=region:
+                    raise ValueError('El archivo no se corresponde con el territorio o curso del módulo. Guarde primero el ámbito correcto.')
+            uploads=[(name,blob) for field,name,blob in files if field=='document']
+            if len(uploads)!=1:
+                raise ValueError('Seleccione exactamente un calendario oficial PDF, Word o texto.')
+            # Solo vista previa local. Nunca se modifica la programación desde esta ruta.
+            return self.send(calendar_document.preview_document(
+                uploads[0][0],uploads[0][1],region,year,fields.get('allow_ocr')=='true'))
         if path=='/api/national/document-preview':
             import official_document_tables
             uploads=[(name,blob) for field,name,blob in files if field=='document']
